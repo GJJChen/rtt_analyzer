@@ -53,6 +53,9 @@ comparisons.csv
 # 发布包
 RTT_Analyzer_v*/
 
+# 源码压缩包
+*.zip
+
 # Windows
 Thumbs.db
 desktop.ini
