@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RTT 数据分析工具</title>
+    <style>
+      /* 预加载动画样式 */
+      #splash-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.3s ease-out;
+      }
+      
+      #splash-screen.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      
+      .splash-content {
+        text-align: center;
+      }
+      
+      .spinner {
+        display: inline-block;
+        width: 64px;
+        height: 64px;
+        border: 4px solid rgba(59, 130, 246, 0.2);
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 16px;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      .splash-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #1f2937;
+        margin-bottom: 8px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      }
+      
+      .splash-text {
+        font-size: 14px;
+        color: #6b7280;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      }
+      
+      @media (prefers-color-scheme: dark) {
+        #splash-screen {
+          background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        }
+        .splash-title {
+          color: #f9fafb;
+        }
+        .splash-text {
+          color: #9ca3af;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- 预加载动画 -->
+    <div id="splash-screen">
+      <div class="splash-content">
+        <div class="spinner"></div>
+        <div class="splash-title">RTT 数据分析工具</div>
+        <div class="splash-text">正在启动...</div>
+      </div>
+    </div>
+    
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    
+    <!-- 移除预加载动画 -->
+    <script>
+      window.addEventListener('load', () => {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+          // 等待一小段时间确保 React 渲染完成
+          setTimeout(() => {
+            splash.classList.add('fade-out');
+            setTimeout(() => splash.remove(), 300);
+          }, 100);
+        }
+      });
+    </script>
+  </body>
+</html>

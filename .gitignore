@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.pyc
+venv/
+ENV/
+env/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 后端构建产物
+build/
+dist/
+*.exe
+
+# 分析结果文件夹（生成的输出）
+*_results/
+comparisons_results/
+
+# 临时文件和测试数据
+sample_rtt - 副本.csv
+comparisons.csv
+
+# 发布包
+RTT_Analyzer_v*/
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# 日志文件
+*.log
+
+# Node modules (前端)
+node_modules/
+
+# 前端构建产物已在 rtt_analyzer/.gitignore 中处理
+# Rust/Tauri 构建产物已在 rtt_analyzer/src-tauri/.gitignore 中处理
