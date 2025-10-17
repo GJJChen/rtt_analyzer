@@ -19,7 +19,7 @@ const Card = ({ children, className = '' }) => (
 const TabButton = ({ children, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-150 ease-out motion-safe:transform hover:-translate-y-0.5 active:translate-y-0 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
       active
         ? 'bg-blue-600 text-white'
         : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
@@ -677,7 +677,7 @@ function App() {
                 <span>后端连接失败</span>
               </div>
             )}
-            <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+            <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full transition-all duration-150 ease-out hover:bg-gray-200 dark:hover:bg-gray-700 motion-safe:transform hover:-translate-y-0.5 active:translate-y-0 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400/60">
               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
           </div>
@@ -720,7 +720,7 @@ function App() {
                   />
                   <button
                     onClick={selectInputDir}
-                    className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    className="px-3 py-2 bg-blue-600 text-white rounded-md transition-all duration-150 ease-out hover:bg-blue-700 hover:shadow-sm active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                   >
                     <FolderOpen size={18} />
                   </button>
@@ -746,7 +746,7 @@ function App() {
                   />
                   <button
                     onClick={selectOutputBaseDir}
-                    className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    className="px-3 py-2 bg-blue-600 text-white rounded-md transition-all duration-150 ease-out hover:bg-blue-700 hover:shadow-sm active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                   >
                     <FolderOpen size={18} />
                   </button>
@@ -760,10 +760,12 @@ function App() {
             <div 
               ref={dropZoneRef}
               onClick={backendStatus === 'ready' ? openFileDialog : undefined}
-              className={`relative bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-lg rounded-xl p-6 flex flex-col items-center justify-center border-2 border-dashed h-64 transition-colors ${
+              className={`group relative bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-lg rounded-xl p-6 flex flex-col items-center justify-center border-2 border-dashed h-64 transition-all duration-200 ease-out motion-safe:transform ${
                 backendStatus !== 'ready' 
                   ? 'opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600' 
-                  : `cursor-pointer ${isDragOver && isOverDropZone ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/50' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/30'}`
+                  : `cursor-pointer ${isDragOver && isOverDropZone 
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/50 scale-[1.01] ring-2 ring-blue-300/50 shadow-lg' 
+                      : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/30 hover:scale-[1.01] hover:shadow-sm'}`
               }`}
             >
               {/* 背景图层 (非拖拽时显示) */}
@@ -788,7 +790,7 @@ function App() {
               
               {/* 文字层 */}
               <div className="relative z-10 flex flex-col items-center w-full">
-                <UploadCloud size={48} className="text-gray-400 dark:text-gray-500 mb-4" />
+                <UploadCloud size={48} className="text-gray-400 dark:text-gray-500 mb-4 transition-transform duration-200 ease-out group-hover:-translate-y-0.5" />
                 <p className="text-lg font-semibold">
                   {backendStatus === 'ready' ? '拖拽文件到此区域' : '等待后端就绪...'}
                 </p>
@@ -993,7 +995,7 @@ function App() {
                 await openComparisonsFile();
                 setContextMenu(null);
               }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-blue-600 dark:text-blue-400"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2 text-blue-600 dark:text-blue-400"
             >
               <ExternalLink size={16} />
               打开文件
@@ -1003,7 +1005,7 @@ function App() {
                 await clearComparisons();
                 setContextMenu(null);
               }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-red-600 dark:text-red-400"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2 text-red-600 dark:text-red-400"
             >
               <Trash2 size={16} />
               清除历史
