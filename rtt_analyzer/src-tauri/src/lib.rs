@@ -53,11 +53,25 @@ fn start_backend(app: &AppHandle) -> Result<u32, String> {
 fn kill_backend(pid: u32) {
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
+        use winapi::um::handleapi::CloseHandle;
+        use winapi::um::processthreadsapi::{OpenProcess, TerminateProcess};
+        use winapi::um::winnt::PROCESS_TERMINATE;
+        
         println!("Attempting to kill backend process with PID: {}", pid);
-        let _ = Command::new("taskkill")
-            .args(&["/PID", &pid.to_string(), "/F"])
-            .output();
+        
+        unsafe {
+            // 打开进程句柄
+            let process_handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
+            if !process_handle.is_null() {
+                // 终止进程
+                TerminateProcess(process_handle, 1);
+                // 关闭句柄
+                CloseHandle(process_handle);
+                println!("Backend process terminated successfully");
+            } else {
+                eprintln!("Failed to open process handle for PID: {}", pid);
+            }
+        }
     }
     
     #[cfg(not(target_os = "windows"))]
@@ -79,14 +93,14 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(BackendProcess(Arc::new(Mutex::new(None))))
         .setup(|app| {
+            // 获取主窗口
+            let window = app.get_webview_window("main").unwrap();
+            
             // 显式设置窗口图标
             #[cfg(target_os = "windows")]
             {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
-                    // 图标会从 tauri.conf.json 中配置的路径加载
-                    let _ = window.set_title("RTT Analyzer");
-                }
+                // 图标会从 tauri.conf.json 中配置的路径加载
+                let _ = window.set_title("RTT Analyzer");
             }
             
             // 启动后端服务器
@@ -100,6 +114,15 @@ pub fn run() {
                     eprintln!("Failed to start backend: {}", e);
                 }
             }
+            
+            // 等待一小段时间让后端启动，然后显示窗口
+            let window_clone = window.clone();
+            tauri::async_runtime::spawn(async move {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let _ = window_clone.show();
+                let _ = window_clone.set_focus();
+            });
+            
             Ok(())
         })
         .on_window_event(|window, event| {

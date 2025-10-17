@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { File, UploadCloud, BarChart2, Table, BrainCircuit, Moon, Sun, AlertTriangle, FolderOpen, Trash2, ExternalLink } from 'lucide-react';
+import { File, UploadCloud, BarChart2, Table, BrainCircuit, Moon, Sun, AlertTriangle, FolderOpen, Trash2, ExternalLink, TrendingUp, TrendingDown } from 'lucide-react';
 // Tauri v2 正确的导入方式
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -8,10 +8,13 @@ import { writeFile } from '@tauri-apps/plugin-fs';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { ToastContainer } from './components/Toast';
+import { ChartSkeleton, TableSkeleton, StatCardSkeleton } from './components/Skeleton';
+import EmptyState from './components/EmptyState';
 
 // --- Helper Components for UI Styling ---
 const Card = ({ children, className = '' }) => (
-  <div className={`bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-lg rounded-xl p-6 ${className}`}>
+  <div className={`glass-card shadow-xl rounded-xl p-4 md:p-5 animate-fade-in ${className}`}>
     {children}
   </div>
 );
@@ -19,10 +22,10 @@ const Card = ({ children, className = '' }) => (
 const TabButton = ({ children, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-150 ease-out motion-safe:transform hover:-translate-y-0.5 active:translate-y-0 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
+    className={`px-3 md:px-4 py-2 text-xs md:text-sm font-medium rounded-lg transition-all duration-200 ease-out motion-safe:transform hover:-translate-y-0.5 active:translate-y-0 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
       active
-        ? 'bg-blue-600 text-white'
-        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+        ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30'
+        : 'text-gray-600 dark:text-gray-300 hover:bg-gradient-to-r hover:from-gray-200 hover:to-gray-100 dark:hover:from-gray-700 dark:hover:to-gray-600'
     }`}
   >
     {children}
@@ -35,10 +38,10 @@ function App() {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [activeTab, setActiveTab] = useState('chart');
   const [darkMode, setDarkMode] = useState(false); // 默认明亮模式
-  const [lastError, setLastError] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isOverDropZone, setIsOverDropZone] = useState(false); // 是否在拖拽区域内
   const dropZoneRef = useRef(null); // 引用拖拽区域元素
+  const handleFileDropRef = useRef(null); // 引用最新的 handleFileDrop 函数
   const [comparisonsData, setComparisonsData] = useState(null); // comparisons.csv 数据
   const chartRef = useRef(null); // 引用 ECharts 实例
   const [inputDir, setInputDir] = useState(''); // 输入文件根目录
@@ -46,6 +49,18 @@ function App() {
   const [contextMenu, setContextMenu] = useState(null); // 右键菜单状态
   const [comparisonsFilePath, setComparisonsFilePath] = useState(''); // comparisons.csv 完整路径
   const [backendStatus, setBackendStatus] = useState('connecting'); // 后端状态: connecting, ready, error
+  const [toasts, setToasts] = useState([]); // Toast通知列表
+  const [isProcessing, setIsProcessing] = useState(false); // 处理中状态
+
+  // Toast管理函数
+  const addToast = useCallback((message, type = 'info', duration = 4000) => {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, message, type, duration }]);
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
 
 
   // --- Dark Mode Toggle ---
@@ -139,19 +154,20 @@ function App() {
       
       if (response.ok) {
         setComparisonsData({ rows: [], columns: [], all_rows: [] });
+        addToast('历史记录已清除', 'success', 3000);
         console.log('Comparisons cleared successfully');
       }
     } catch (error) {
       console.error("Failed to clear comparisons:", error);
-      setLastError('清除历史记录失败: ' + error.message);
+      addToast('清除历史记录失败: ' + error.message, 'error');
     }
-  }, []);
+  }, [addToast]);
 
   // 打开 comparisons.csv 文件
   const openComparisonsFile = useCallback(async () => {
     try {
       if (!comparisonsFilePath) {
-        setLastError('无法获取文件路径');
+        addToast('无法获取文件路径', 'warning');
         return;
       }
       // 在文件资源管理器中显示并选中 comparisons.csv 文件
@@ -159,9 +175,9 @@ function App() {
       console.log('Revealing comparisons.csv in explorer...');
     } catch (error) {
       console.error("Failed to open comparisons file:", error);
-      setLastError('打开文件失败: ' + error.message);
+      addToast('打开文件失败: ' + error.message, 'error');
     }
-  }, [comparisonsFilePath]);
+  }, [comparisonsFilePath, addToast]);
 
   // 点击拖拽区域打开文件选择对话框
   const openFileDialog = useCallback(async () => {
@@ -218,6 +234,7 @@ function App() {
         if (response.ok) {
           console.log('Backend is ready!');
           setBackendStatus('ready');
+          addToast('后端服务已就绪', 'success', 3000);
           return true;
         }
       } catch (error) {
@@ -228,9 +245,9 @@ function App() {
     
     console.warn('Backend failed to start in time');
     setBackendStatus('error');
-    setLastError('后端服务启动超时，请检查是否有其他程序占用 8000 端口');
+    addToast('后端服务启动超时，请检查是否有其他程序占用 8000 端口', 'error');
     return false;
-  }, []);
+  }, [addToast]);
 
   // 初始化：等待后端就绪后加载数据
   useEffect(() => {
@@ -238,6 +255,15 @@ function App() {
       await waitForBackend();
       await loadConfig();
       await fetchComparisons();
+      
+      // 移除启动画面
+      setTimeout(() => {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+          splash.classList.add('fade-out');
+          setTimeout(() => splash.remove(), 300);
+        }
+      }, 100);
     };
     initialize();
   }, [waitForBackend, loadConfig, fetchComparisons]);
@@ -251,7 +277,8 @@ function App() {
       const imageData = echartsInstance.getDataURL({
         type: 'png',
         pixelRatio: 2, // 更高清晰度
-        backgroundColor: darkMode ? '#1f2937' : '#ffffff'
+        backgroundColor: darkMode ? '#1f2937' : '#ffffff',
+        excludeComponents: ['toolbox', 'dataZoom'] // 排除工具箱和缩放滑动条
       });
       
       // 将 base64 转换为字节数组
@@ -270,9 +297,9 @@ function App() {
       console.log(`Chart auto-saved to: ${filePath}`);
     } catch (error) {
       console.error('Failed to auto-save chart:', error);
-      setLastError('自动保存图表失败: ' + error.message);
+      addToast('自动保存图表失败: ' + error.message, 'error');
     }
-  }, [analysisResult, darkMode]);
+  }, [analysisResult, darkMode, addToast]);
 
   // 当图表数据更新时自动保存
   useEffect(() => {
@@ -293,7 +320,7 @@ function App() {
       return;
     }
     
-    setLastError(null); // Clear previous errors
+    setIsProcessing(true);
     const timestamp = new Date().toLocaleString('zh-CN', { 
       month: '2-digit', 
       day: '2-digit', 
@@ -346,6 +373,7 @@ function App() {
 
         setFiles(prevFiles => prevFiles.map(f => f.id === file.id ? { ...f, status: 'success', result: result.data } : f));
         setAnalysisResult(result.data);
+        addToast(`成功分析文件: ${file.name}`, 'success', 3000);
         
         // 刷新 comparisons 数据
         await fetchComparisons();
@@ -357,11 +385,18 @@ function App() {
           : error.message;
 
         setFiles(prevFiles => prevFiles.map(f => f.id === file.id ? { ...f, status: 'error', result: errorMessage } : f));
-        setLastError(errorMessage);
+        addToast(`处理失败: ${file.name} - ${errorMessage}`, 'error');
         setAnalysisResult(null);
       }
     }
-  }, [fetchComparisons, inputDir, outputBaseDir, saveConfig, backendStatus]);
+    
+    setIsProcessing(false);
+  }, [fetchComparisons, inputDir, outputBaseDir, saveConfig, backendStatus, addToast]);
+
+  // 使用 ref 保存最新的 handleFileDrop 函数
+  useEffect(() => {
+    handleFileDropRef.current = handleFileDrop;
+  }, [handleFileDrop]);
 
   // Set up Tauri event listeners for file drop
    useEffect(() => {
@@ -428,7 +463,7 @@ function App() {
               if (isInside) {
                 const paths = event.payload.paths || [];
                 if (paths.length) {
-                  handleFileDrop(paths);
+                  handleFileDropRef.current?.(paths);
                 }
               } else {
                 console.log('Drop ignored - not over drop zone');
@@ -461,7 +496,7 @@ function App() {
       console.log('Cleaning up listeners...');
       if (unlisten) unlisten();
     };
-  }, [handleFileDrop]);
+  }, []); // 空依赖数组，避免重复注册监听器
   // --- Chart Options ---
   const chartOption = useMemo(() => {
     if (!analysisResult || !analysisResult.chart_data) return {};
@@ -480,27 +515,122 @@ function App() {
             const point = params[0];
             const rtt = point.data[0].toFixed(2);
             const cdf = (point.data[1] * 100).toFixed(2);
-            return `RTT: ${rtt} ms<br />CDF: ${cdf}%`;
+            return `<div style="padding: 4px;">
+              <strong>RTT:</strong> ${rtt} ms<br />
+              <strong>CDF:</strong> ${cdf}%
+            </div>`;
           }
           return '';
         },
+        backgroundColor: darkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+        borderColor: darkMode ? '#4b5563' : '#e5e7eb',
+        borderWidth: 1,
+        textStyle: {
+          color: darkMode ? '#f3f4f6' : '#111827'
+        },
+        extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);'
       },
+      // 添加工具箱，包含缩放、还原、保存等功能
+      toolbox: {
+        feature: {
+          dataZoom: {
+            yAxisIndex: 'none',
+            title: {
+              zoom: '区域缩放',
+              back: '还原缩放'
+            }
+          },
+          restore: {
+            title: '还原'
+          },
+          saveAsImage: {
+            title: '保存为图片',
+            pixelRatio: 2,
+            backgroundColor: darkMode ? '#1f2937' : '#ffffff',
+            excludeComponents: ['toolbox', 'dataZoom'] // 保存时排除工具箱和缩放滑动条
+          }
+        },
+        iconStyle: {
+          borderColor: darkMode ? '#9ca3af' : '#6b7280'
+        },
+        emphasis: {
+          iconStyle: {
+            borderColor: darkMode ? '#3b82f6' : '#2563eb'
+          }
+        }
+      },
+      // 添加数据区域缩放组件
+      dataZoom: [
+        {
+          type: 'inside', // 内置型，支持鼠标滚轮缩放和拖拽平移
+          xAxisIndex: [0],
+          start: 0,
+          end: 100,
+          zoomOnMouseWheel: true, // 鼠标滚轮缩放
+          moveOnMouseMove: true, // 按住鼠标移动平移
+          moveOnMouseWheel: false, // Shift + 滚轮平移
+          preventDefaultMouseMove: true
+        },
+        {
+          type: 'slider', // 滑动条型，显示在图表下方
+          xAxisIndex: [0],
+          start: 0,
+          end: 100,
+          height: 20,
+          bottom: 10,
+          show: true, // 在界面上显示
+          showDetail: false, // 不显示详细数值
+          borderColor: darkMode ? '#4b5563' : '#d1d5db',
+          fillerColor: darkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.15)',
+          handleStyle: {
+            color: darkMode ? '#3b82f6' : '#2563eb',
+            borderColor: darkMode ? '#60a5fa' : '#3b82f6'
+          },
+          textStyle: {
+            color: darkMode ? '#9ca3af' : '#6b7280'
+          },
+          // 关键：保存图片时不包含滑动条
+          emphasis: {
+            handleStyle: {
+              shadowBlur: 3,
+              shadowColor: darkMode ? 'rgba(59, 130, 246, 0.4)' : 'rgba(37, 99, 235, 0.4)'
+            }
+          }
+        },
+        {
+          type: 'inside', // Y轴也支持缩放
+          yAxisIndex: [0],
+          start: 0,
+          end: 100,
+          zoomOnMouseWheel: false,
+          moveOnMouseMove: false,
+          moveOnMouseWheel: false
+        }
+      ],
       xAxis: {
         type: 'value',
         name: 'RTT (ms)',
-        nameTextStyle: { color: darkMode ? '#ccc' : '#333' },
+        nameLocation: 'middle', // 标签位置在中间
+        nameTextStyle: { color: darkMode ? '#ccc' : '#333', fontSize: 12 },
+        nameGap: 25, // 标签与轴线的距离
         axisLine: { lineStyle: { color: darkMode ? '#ccc' : '#333' } },
         max: xAxisMax, // 设置最大值为合理范围
+        axisLabel: {
+          color: darkMode ? '#9ca3af' : '#6b7280'
+        }
       },
       yAxis: {
         type: 'value',
         name: 'CDF',
-        nameTextStyle: { color: darkMode ? '#ccc' : '#333' },
+        nameLocation: 'middle', // 标签位置在中间
+        nameTextStyle: { color: darkMode ? '#ccc' : '#333', fontSize: 12 },
+        nameGap: 35, // 标签与轴线的距离
         axisLine: { lineStyle: { color: darkMode ? '#ccc' : '#333' } },
         min: 0,
         max: 1,
         axisLabel: {
-          formatter: (value) => (value * 100).toFixed(0) + '%'
+          formatter: (value) => (value * 100).toFixed(0) + '%',
+          color: darkMode ? '#9ca3af' : '#6b7280'
         }
       },
       series: [{
@@ -559,10 +689,10 @@ function App() {
         },
       }],
       grid: {
-        left: '3%',
+        left: '6%', // 增加左侧空间以显示Y轴标签
         right: '4%',
-        bottom: '10%',
-        top: '10%',
+        bottom: '18%', // 增加底部空间以容纳滑动条和X轴标签
+        top: '12%', // 增加顶部空间以容纳工具箱
         containLabel: true,
       },
     };
@@ -579,25 +709,120 @@ function App() {
       tooltip: {
         trigger: 'axis',
         axisPointer: {
-          type: 'cross'
+          type: 'cross',
+          crossStyle: {
+            color: darkMode ? '#9ca3af' : '#6b7280'
+          }
+        },
+        backgroundColor: darkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+        borderColor: darkMode ? '#4b5563' : '#e5e7eb',
+        borderWidth: 1,
+        textStyle: {
+          color: darkMode ? '#f3f4f6' : '#111827'
+        },
+        extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);'
+      },
+      // 添加工具箱
+      toolbox: {
+        feature: {
+          dataZoom: {
+            yAxisIndex: 'none',
+            title: {
+              zoom: '区域缩放',
+              back: '还原缩放'
+            }
+          },
+          restore: {
+            title: '还原'
+          },
+          saveAsImage: {
+            title: '保存为图片',
+            pixelRatio: 2,
+            backgroundColor: darkMode ? '#1f2937' : '#ffffff',
+            excludeComponents: ['toolbox', 'dataZoom'] // 保存时排除工具箱和缩放滑动条
+          }
+        },
+        iconStyle: {
+          borderColor: darkMode ? '#9ca3af' : '#6b7280'
+        },
+        emphasis: {
+          iconStyle: {
+            borderColor: darkMode ? '#3b82f6' : '#2563eb'
+          }
         }
       },
+      // 添加数据区域缩放
+      dataZoom: [
+        {
+          type: 'inside',
+          xAxisIndex: [0],
+          start: 0,
+          end: 100,
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          moveOnMouseWheel: false
+        },
+        {
+          type: 'slider',
+          xAxisIndex: [0],
+          start: 0,
+          end: 100,
+          height: 20,
+          bottom: 10,
+          show: true,
+          showDetail: false,
+          borderColor: darkMode ? '#4b5563' : '#d1d5db',
+          fillerColor: darkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.15)',
+          handleStyle: {
+            color: darkMode ? '#3b82f6' : '#2563eb',
+            borderColor: darkMode ? '#60a5fa' : '#3b82f6'
+          },
+          textStyle: {
+            color: darkMode ? '#9ca3af' : '#6b7280'
+          },
+          emphasis: {
+            handleStyle: {
+              shadowBlur: 3,
+              shadowColor: darkMode ? 'rgba(59, 130, 246, 0.4)' : 'rgba(37, 99, 235, 0.4)'
+            }
+          }
+        },
+        {
+          type: 'inside',
+          yAxisIndex: [0],
+          start: 0,
+          end: 100,
+          zoomOnMouseWheel: false,
+          moveOnMouseMove: false
+        }
+      ],
       legend: {
         data: ['Mean', 'P50', 'P90', 'P99', 'P99.9'],
-        textStyle: { color: darkMode ? '#ccc' : '#333' }
+        textStyle: { color: darkMode ? '#ccc' : '#333' },
+        top: 5
       },
       xAxis: {
         type: 'category',
         data: xData,
         name: '序号',
-        nameTextStyle: { color: darkMode ? '#ccc' : '#333' },
-        axisLine: { lineStyle: { color: darkMode ? '#ccc' : '#333' } }
+        nameLocation: 'middle', // 标签位置在中间
+        nameTextStyle: { color: darkMode ? '#ccc' : '#333', fontSize: 12 },
+        nameGap: 25, // 标签与轴线的距离
+        axisLine: { lineStyle: { color: darkMode ? '#ccc' : '#333' } },
+        axisLabel: {
+          color: darkMode ? '#9ca3af' : '#6b7280'
+        }
       },
       yAxis: {
         type: 'value',
         name: 'RTT (ms)',
-        nameTextStyle: { color: darkMode ? '#ccc' : '#333' },
-        axisLine: { lineStyle: { color: darkMode ? '#ccc' : '#333' } }
+        nameLocation: 'middle', // 标签位置在中间
+        nameTextStyle: { color: darkMode ? '#ccc' : '#333', fontSize: 12 },
+        nameGap: 35, // 标签与轴线的距离
+        axisLine: { lineStyle: { color: darkMode ? '#ccc' : '#333' } },
+        axisLabel: {
+          color: darkMode ? '#9ca3af' : '#6b7280'
+        }
       },
       series: [
         {
@@ -642,9 +867,9 @@ function App() {
         }
       ],
       grid: {
-        left: '3%',
+        left: '6%', // 增加左侧空间以显示Y轴标签
         right: '4%',
-        bottom: '10%',
+        bottom: '15%', // 增加底部空间以显示X轴标签
         top: '15%',
         containLabel: true
       }
@@ -653,60 +878,61 @@ function App() {
   
   // --- UI Rendering ---
   return (
-    <div className={`min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-8 transition-colors font-sans`}>
+    <div className={`min-h-screen bg-gradient-mesh bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 md:p-6 transition-colors font-sans`}>
+      {/* Toast通知容器 */}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+      
       <div className="max-w-7xl mx-auto">
-        <header className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">RTT 数据分析工具</h1>
+        <header className="flex justify-between items-center mb-4 md:mb-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
+              RTT Analyzer
+            </h1>
+            <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              RTT数据统计分析与可视化平台
+            </p>
+          </div>
           <div className="flex items-center gap-4">
             {/* 后端状态指示器 */}
             {backendStatus === 'connecting' && (
-              <div className="flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-400">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-sm text-yellow-700 dark:text-yellow-400">
                 <div className="inline-block animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-yellow-600 dark:border-yellow-400"></div>
-                <span>正在连接后端...</span>
+                <span className="font-medium">连接中</span>
               </div>
             )}
             {backendStatus === 'ready' && (
-              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                <div className="inline-block rounded-full h-2 w-2 bg-green-600 dark:bg-green-400"></div>
-                <span>后端已就绪</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-sm text-green-700 dark:text-green-400">
+                <div className="inline-block rounded-full h-2 w-2 bg-green-600 dark:bg-green-400 animate-pulse"></div>
+                <span className="font-medium">已就绪</span>
               </div>
             )}
             {backendStatus === 'error' && (
-              <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-100 dark:bg-red-900/30 text-sm text-red-700 dark:text-red-400">
                 <AlertTriangle size={16} />
-                <span>后端连接失败</span>
+                <span className="font-medium">连接失败</span>
               </div>
             )}
-            <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full transition-all duration-150 ease-out hover:bg-gray-200 dark:hover:bg-gray-700 motion-safe:transform hover:-translate-y-0.5 active:translate-y-0 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400/60">
-              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            <button 
+              onClick={() => setDarkMode(!darkMode)} 
+              className="p-2.5 rounded-full transition-all duration-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-md motion-safe:transform hover:-translate-y-0.5 active:translate-y-0 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+            >
+              {darkMode ? <Sun size={20} className="text-yellow-500" /> : <Moon size={20} className="text-indigo-600" />}
             </button>
           </div>
         </header>
-
-        {lastError && (
-          <div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-200 p-4 rounded-md mb-6" role="alert">
-            <div className="flex">
-              <div className="py-1"><AlertTriangle className="h-6 w-6 text-red-500 mr-4"/></div>
-              <div>
-                <p className="font-bold">错误</p>
-                <p className="text-sm">{lastError}</p>
-              </div>
-            </div>
-          </div>
-        )}
         
-        <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <main className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Left Column */}
-          <div className="lg:col-span-1 flex flex-col gap-8">
+          <div className="lg:col-span-1 flex flex-col gap-4 md:gap-5">
             {/* 目录配置 */}
             <Card>
-              <h2 className="text-xl font-semibold mb-4 flex items-center">
-                <FolderOpen size={20} className="mr-2"/>目录配置
+              <h2 className="text-lg md:text-xl font-semibold mb-3 flex items-center">
+                <FolderOpen size={18} className="mr-2"/>目录配置
               </h2>
               
               {/* 输入文件根目录 */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+              <div className="mb-3">
+                <label className="block text-xs md:text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
                   输入文件目录
                 </label>
                 <div className="flex gap-2">
@@ -716,23 +942,24 @@ function App() {
                     onChange={(e) => setInputDir(e.target.value)}
                     onBlur={() => saveConfig(inputDir, outputBaseDir)}
                     placeholder="选择输入文件所在目录"
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                   />
                   <button
                     onClick={selectInputDir}
-                    className="px-3 py-2 bg-blue-600 text-white rounded-md transition-all duration-150 ease-out hover:bg-blue-700 hover:shadow-sm active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                    className="px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg transition-all duration-200 hover:from-blue-700 hover:to-blue-600 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                   >
-                    <FolderOpen size={18} />
+                    <FolderOpen size={16} />
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                  <span className="inline-block w-1 h-1 bg-gray-400 rounded-full"></span>
                   拖入文件时会自动配置此目录
                 </p>
               </div>
               
               {/* 输出结果文件夹根目录 */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                <label className="block text-xs md:text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
                   输出结果目录
                 </label>
                 <div className="flex gap-2">
@@ -742,16 +969,17 @@ function App() {
                     onChange={(e) => setOutputBaseDir(e.target.value)}
                     onBlur={() => saveConfig(inputDir, outputBaseDir)}
                     placeholder="选择输出结果根目录（可选）"
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                   />
                   <button
                     onClick={selectOutputBaseDir}
-                    className="px-3 py-2 bg-blue-600 text-white rounded-md transition-all duration-150 ease-out hover:bg-blue-700 hover:shadow-sm active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                    className="px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg transition-all duration-200 hover:from-blue-700 hover:to-blue-600 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                   >
-                    <FolderOpen size={18} />
+                    <FolderOpen size={16} />
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                  <span className="inline-block w-1 h-1 bg-gray-400 rounded-full"></span>
                   未配置时，结果将保存在输入文件所在目录
                 </p>
               </div>
@@ -760,12 +988,12 @@ function App() {
             <div 
               ref={dropZoneRef}
               onClick={backendStatus === 'ready' ? openFileDialog : undefined}
-              className={`group relative bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-lg rounded-xl p-6 flex flex-col items-center justify-center border-2 border-dashed h-64 transition-all duration-200 ease-out motion-safe:transform ${
+              className={`group relative glass-card shadow-xl flex flex-col items-center justify-center border-2 border-dashed h-48 md:h-56 transition-all duration-300 ease-out motion-safe:transform ${
                 backendStatus !== 'ready' 
                   ? 'opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600' 
                   : `cursor-pointer ${isDragOver && isOverDropZone 
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/50 scale-[1.01] ring-2 ring-blue-300/50 shadow-lg' 
-                      : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/30 hover:scale-[1.01] hover:shadow-sm'}`
+                      ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-900/50 dark:to-cyan-900/50 scale-[1.02] ring-4 ring-blue-300/30 shadow-2xl' 
+                      : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-gradient-to-br hover:from-blue-50/50 hover:to-transparent dark:hover:from-blue-900/20 dark:hover:to-transparent hover:scale-[1.01] hover:shadow-xl'}`
               }`}
             >
               {/* 背景图层 (非拖拽时显示) */}
@@ -780,8 +1008,8 @@ function App() {
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
-                    opacity: 0.35,
-                    borderRadius: '0.75rem',
+                    opacity: 0.25,
+                    borderRadius: '1rem',
                     pointerEvents: 'none',
                     zIndex: 0
                   }}
@@ -790,16 +1018,37 @@ function App() {
               
               {/* 文字层 */}
               <div className="relative z-10 flex flex-col items-center w-full">
-                <UploadCloud size={48} className="text-gray-400 dark:text-gray-500 mb-4 transition-transform duration-200 ease-out group-hover:-translate-y-0.5" />
-                <p className="text-lg font-semibold">
-                  {backendStatus === 'ready' ? '拖拽文件到此区域' : '等待后端就绪...'}
+                <div className={`mb-3 p-3 rounded-full transition-all duration-300 ${
+                  isDragOver && isOverDropZone 
+                    ? 'bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg scale-110' 
+                    : 'bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-600 group-hover:from-blue-400 group-hover:to-cyan-400 group-hover:scale-105'
+                }`}>
+                  <UploadCloud 
+                    size={40} 
+                    className={`transition-colors duration-300 ${
+                      isDragOver && isOverDropZone 
+                        ? 'text-white' 
+                        : 'text-gray-500 dark:text-gray-400 group-hover:text-white'
+                    }`} 
+                  />
+                </div>
+                <p className="text-base md:text-lg font-semibold mb-1">
+                  {backendStatus === 'ready' ? (
+                    isDragOver && isOverDropZone ? '松开鼠标即可上传' : '拖拽文件到此区域'
+                  ) : '等待后端就绪...'}
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
                   {backendStatus === 'ready' ? '或点击选择文件' : '正在启动后端服务'}
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
                   {backendStatus === 'ready' ? '支持一个或多个 .csv 文件' : '请稍候...'}
                 </p>
+                {isProcessing && (
+                  <div className="mt-3 flex items-center gap-2 text-xs md:text-sm text-blue-600 dark:text-blue-400">
+                    <div className="inline-block animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-blue-600 dark:border-blue-400"></div>
+                    <span className="font-medium">处理中...</span>
+                  </div>
+                )}
               </div>
               
               {/* 前景图层 (拖拽时显示，覆盖在文字上方) */}
@@ -814,43 +1063,72 @@ function App() {
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
-                    opacity: 0.75, // 前景图透明度，可以看到下方的文字
-                    borderRadius: '0.75rem',
+                    opacity: 0.6,
+                    borderRadius: '1rem',
                     pointerEvents: 'none',
-                    zIndex: 20 // 显示在文字上方
+                    zIndex: 20
                   }}
                 />
               )}
             </div>
             
             <Card>
-              <h2 className="text-xl font-semibold mb-4 flex items-center"><File size={20} className="mr-2"/>处理队列</h2>
+              <h2 className="text-lg md:text-xl font-semibold mb-3 flex items-center">
+                <div className="p-1.5 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg mr-2">
+                  <File size={16} className="text-white"/>
+                </div>
+                处理队列
+                {files.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full font-bold">
+                    {files.length}
+                  </span>
+                )}
+              </h2>
               {files.length > 0 ? (
-                <div className="max-h-48 overflow-y-auto">
-                  <ul className="space-y-2">
-                    {files.map(file => (
-                      <li key={file.id} className="text-sm border-b border-gray-200 dark:border-gray-700 pb-2">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium">{file.name}</span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">{file.timestamp}</span>
+                <div className="max-h-48 md:max-h-56 overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
+                  {files.map(file => {
+                    const statusConfig = {
+                      queued: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400', label: '等待中' },
+                      processing: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-600 dark:text-blue-400', label: '处理中' },
+                      success: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-600 dark:text-green-400', label: '成功' },
+                      error: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-600 dark:text-red-400', label: '失败' },
+                    };
+                    const config = statusConfig[file.status] || statusConfig.queued;
+                    
+                    return (
+                      <div key={file.id} className={`${config.bg} rounded-lg p-2.5 border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all duration-200`}>
+                        <div className="flex justify-between items-start mb-1.5">
+                          <span className="font-semibold text-gray-900 dark:text-gray-100 text-xs md:text-sm truncate flex-1">{file.name}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 whitespace-nowrap">{file.timestamp}</span>
                         </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                          状态: <span className="font-medium">{file.status}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-bold ${config.text} px-2 py-0.5 rounded-full ${config.bg}`}>
+                            {file.status === 'processing' && (
+                              <span className="inline-block animate-spin rounded-full h-2 w-2 border border-current mr-1"></span>
+                            )}
+                            {config.label}
+                          </span>
                         </div>
-                      </li>
-                    ))}
-                  </ul>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400">队列为空</p>
+                <div className="py-3">
+                  <EmptyState 
+                    type="default" 
+                    title="队列为空"
+                    description="拖入文件后将显示在此处"
+                  />
+                </div>
               )}
             </Card>
           </div>
           
           {/* Right Column */}
-          <div className="lg:col-span-2 flex flex-col gap-8">
+          <div className="lg:col-span-2 flex flex-col gap-4 md:gap-5">
             <Card>
-              <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 mb-4 pb-2">
+              <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 mb-3 pb-2">
                   <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')}>
                     <span className="flex items-center justify-center">
                       <BarChart2 size={16} className="mr-2"/>CDF 分析
@@ -870,22 +1148,37 @@ function App() {
               
               <div>
                 {activeTab === 'chart' && (
-                  analysisResult ? (
-                    <ReactECharts 
-                      ref={chartRef}
-                      option={chartOption} 
-                      style={{ height: '400px' }} 
-                      theme={darkMode ? 'dark' : 'light'} 
-                    />
+                  isProcessing && !analysisResult ? (
+                    <ChartSkeleton />
+                  ) : analysisResult ? (
+                    <div>
+                      <ReactECharts 
+                        ref={chartRef}
+                        option={chartOption} 
+                        style={{ height: '380px' }} 
+                        theme={darkMode ? 'dark' : 'light'} 
+                      />
+                      <div className="mt-2 p-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                        <p className="text-xs text-blue-700 dark:text-blue-400 flex items-start gap-2">
+                          <span className="inline-block mt-0.5">💡</span>
+                          <span>
+                            <strong>交互提示：</strong>
+                            鼠标滚轮缩放 | 框选区域放大 | 拖拽图表平移 | 工具栏保存图片或还原视图
+                          </span>
+                        </p>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="h-96 flex items-center justify-center text-gray-500 dark:text-gray-400">暂无数据。请拖入一个CSV文件开始分析。</div>
+                    <EmptyState type="chart" />
                   )
                 )}
                 
                 {activeTab === 'table' && (
-                  comparisonsData && comparisonsData.rows && comparisonsData.rows.length > 0 ? (
+                  isProcessing && (!comparisonsData || comparisonsData.rows.length === 0) ? (
+                    <TableSkeleton rows={6} cols={7} />
+                  ) : comparisonsData && comparisonsData.rows && comparisonsData.rows.length > 0 ? (
                     <div 
-                      className="overflow-x-auto"
+                      className="overflow-x-auto rounded-lg"
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setContextMenu({
@@ -895,10 +1188,10 @@ function App() {
                       }}
                     >
                       <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-800">
+                        <thead className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-700">
                           <tr>
                             {comparisonsData.columns.map((col, idx) => (
-                              <th key={idx} className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              <th key={idx} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                                 {col}
                               </th>
                             ))}
@@ -906,9 +1199,9 @@ function App() {
                         </thead>
                         <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                           {comparisonsData.rows.map((row, idx) => (
-                            <tr key={idx}>
+                            <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                               {comparisonsData.columns.map((col, colIdx) => (
-                                <td key={colIdx} className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                                <td key={colIdx} className="px-3 py-2 whitespace-nowrap text-xs md:text-sm text-gray-900 dark:text-gray-100">
                                   {typeof row[col] === 'number' ? row[col].toFixed(2) : row[col]}
                                 </td>
                               ))}
@@ -918,53 +1211,81 @@ function App() {
                       </table>
                     </div>
                   ) : (
-                    <div className="h-96 flex items-center justify-center text-gray-500 dark:text-gray-400">
-                      暂无对比数据。
-                    </div>
+                    <EmptyState type="table" />
                   )
                 )}
                 
                 {activeTab === 'trend' && (
-                  comparisonsData && comparisonsData.all_rows && comparisonsData.all_rows.length > 0 ? (
+                  isProcessing && (!comparisonsData || !comparisonsData.all_rows || comparisonsData.all_rows.length === 0) ? (
+                    <ChartSkeleton />
+                  ) : comparisonsData && comparisonsData.all_rows && comparisonsData.all_rows.length > 0 ? (
                     <div>
-                      <ReactECharts option={trendChartOption} style={{ height: '400px' }} theme={darkMode ? 'dark' : 'light'} />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-                        💡 提示：点击图例可以开关对应曲线的显示
-                      </p>
+                      <ReactECharts option={trendChartOption} style={{ height: '380px' }} theme={darkMode ? 'dark' : 'light'} />
+                      <div className="mt-2 p-2.5 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                        <p className="text-xs text-purple-700 dark:text-purple-400 flex items-start gap-2">
+                          <span className="inline-block mt-0.5">💡</span>
+                          <span>
+                            <strong>交互提示：</strong>
+                            点击图例开关曲线 | 滚轮缩放 | 框选放大 | 拖拽平移 | 工具栏保存或还原
+                          </span>
+                        </p>
+                      </div>
                     </div>
                   ) : (
-                    <div className="h-96 flex items-center justify-center text-gray-500 dark:text-gray-400">
-                      暂无趋势数据。
-                    </div>
+                    <EmptyState type="trend" />
                   )
                 )}
               </div>
             </Card>
             
             <Card>
-              <h2 className="text-xl font-semibold mb-4 flex items-center"><BrainCircuit size={20} className="mr-2"/>智能摘要</h2>
-              {analysisResult && analysisResult.comparison ? (
+              <h2 className="text-lg md:text-xl font-semibold mb-3 flex items-center">
+                <div className="p-1.5 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg mr-2">
+                  <BrainCircuit size={16} className="text-white"/>
+                </div>
+                智能摘要
+              </h2>
+              {isProcessing && !analysisResult ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+                  {[...Array(5)].map((_, i) => (
+                    <StatCardSkeleton key={i} />
+                  ))}
+                </div>
+              ) : analysisResult && analysisResult.comparison ? (
                 <div className="space-y-3">
-                  <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">与上次对比：</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                  <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600 dark:text-gray-400">
+                    <span className="inline-block w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                    <span className="font-medium">与上次分析对比</span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
                     {Object.entries(analysisResult.comparison).map(([key, data]) => {
                       const isIncrease = data.change > 0;
-                      const colorClass = isIncrease ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
+                      const bgGradient = isIncrease 
+                        ? 'from-red-50 to-rose-50 dark:from-red-900/20 dark:to-rose-900/20' 
+                        : 'from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20';
+                      const iconColor = isIncrease ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
                       const label = key.replace('_ms', '').replace('p', 'P').toUpperCase();
+                      const Icon = isIncrease ? TrendingUp : TrendingDown;
                       
                       return (
-                        <div key={key} className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold">{label}</div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-base font-bold text-gray-900 dark:text-gray-100">
-                              {analysisResult.stats[key].toFixed(2)} ms
+                        <div key={key} className={`bg-gradient-to-br ${bgGradient} p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all duration-200`}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 font-bold tracking-wide">{label}</div>
+                            <Icon size={14} className={iconColor} />
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-base md:text-lg font-bold text-gray-900 dark:text-gray-100">
+                              {analysisResult.stats[key].toFixed(2)}
                             </span>
-                            <span className={`text-xs font-semibold ${colorClass}`}>
-                              {isIncrease ? '↑' : '↓'} {Math.abs(data.change).toFixed(1)}%
-                            </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              上次: {data.value.toFixed(2)} ms
-                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">ms</span>
+                            <div className="mt-1 pt-1.5 border-t border-gray-200 dark:border-gray-700">
+                              <span className={`text-xs font-bold ${iconColor}`}>
+                                {isIncrease ? '+' : ''}{data.change.toFixed(1)}%
+                              </span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+                                ({data.value.toFixed(2)})
+                              </span>
+                            </div>
                           </div>
                         </div>
                       );
@@ -972,9 +1293,13 @@ function App() {
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {analysisResult ? '这是第一次分析，暂无对比数据。' : '暂无分析。拖入文件以生成智能摘要。'}
-                </p>
+                <div className="py-3">
+                  <EmptyState 
+                    type="default" 
+                    title={analysisResult ? '这是第一次分析' : '暂无分析数据'}
+                    description={analysisResult ? '没有历史数据可供对比' : '拖入 CSV 文件开始分析'}
+                  />
+                </div>
               )}
             </Card>
           </div>
@@ -982,35 +1307,43 @@ function App() {
         
         {/* 右键菜单 */}
         {contextMenu && (
-          <div
-            className="fixed bg-white dark:bg-gray-800 shadow-lg rounded-md py-2 z-50 border border-gray-200 dark:border-gray-700"
-            style={{
-              left: `${contextMenu.x}px`,
-              top: `${contextMenu.y}px`
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={async () => {
-                await openComparisonsFile();
-                setContextMenu(null);
+          <>
+            {/* 背景遮罩 */}
+            <div 
+              className="fixed inset-0 z-40" 
+              onClick={() => setContextMenu(null)}
+            />
+            <div
+              className="fixed glass-card shadow-2xl rounded-xl py-1.5 z-50 border border-gray-200 dark:border-gray-700 min-w-[160px] animate-fade-in"
+              style={{
+                left: `${contextMenu.x}px`,
+                top: `${contextMenu.y}px`
               }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2 text-blue-600 dark:text-blue-400"
+              onClick={(e) => e.stopPropagation()}
             >
-              <ExternalLink size={16} />
-              打开文件
-            </button>
-            <button
-              onClick={async () => {
-                await clearComparisons();
-                setContextMenu(null);
-              }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2 text-red-600 dark:text-red-400"
-            >
-              <Trash2 size={16} />
-              清除历史
-            </button>
-          </div>
+              <button
+                onClick={async () => {
+                  await openComparisonsFile();
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left text-xs md:text-sm hover:bg-gradient-to-r hover:from-blue-50 hover:to-cyan-50 dark:hover:from-blue-900/30 dark:hover:to-cyan-900/30 transition-all duration-150 flex items-center gap-2 text-blue-600 dark:text-blue-400 font-medium"
+              >
+                <ExternalLink size={14} />
+                <span>打开文件</span>
+              </button>
+              <div className="my-1 border-t border-gray-200 dark:border-gray-700"></div>
+              <button
+                onClick={async () => {
+                  await clearComparisons();
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left text-xs md:text-sm hover:bg-gradient-to-r hover:from-red-50 hover:to-rose-50 dark:hover:from-red-900/30 dark:hover:to-rose-900/30 transition-all duration-150 flex items-center gap-2 text-red-600 dark:text-red-400 font-medium"
+              >
+                <Trash2 size={14} />
+                <span>清除历史</span>
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>

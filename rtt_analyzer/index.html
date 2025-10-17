@@ -85,19 +85,6 @@
     
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    
-    <!-- 移除预加载动画 -->
-    <script>
-      window.addEventListener('load', () => {
-        const splash = document.getElementById('splash-screen');
-        if (splash) {
-          // 等待一小段时间确保 React 渲染完成
-          setTimeout(() => {
-            splash.classList.add('fade-out');
-            setTimeout(() => splash.remove(), 300);
-          }, 100);
-        }
-      });
-    </script>
   </body>
 </html>
+ 

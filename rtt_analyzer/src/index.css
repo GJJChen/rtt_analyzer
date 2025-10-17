@@ -12,6 +12,47 @@
 	}
 }
 
+/* Custom animations */
+@keyframes shimmer {
+	0% {
+		background-position: -200% 0;
+	}
+	100% {
+		background-position: 200% 0;
+	}
+}
+
+@keyframes slide-in-right {
+	from {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes pulse-glow {
+	0%, 100% {
+		box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+	}
+	50% {
+		box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
+	}
+}
+
 /* Reusable component classes for light micro-interactions */
 @layer components {
 	.btn-light {
@@ -20,4 +61,24 @@
 	.card-interactive {
 		@apply transition-all duration-200 ease-out motion-safe:transform hover:scale-[1.01] hover:shadow-sm;
 	}
+	.animate-slide-in-right {
+		animation: slide-in-right 0.3s ease-out;
+	}
+	.animate-fade-in {
+		animation: fade-in 0.4s ease-out;
+	}
+}
+
+/* Gradient backgrounds */
+.bg-gradient-mesh {
+	background: 
+		radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.1) 0px, transparent 50%),
+		radial-gradient(at 100% 0%, rgba(167, 139, 250, 0.1) 0px, transparent 50%),
+		radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.1) 0px, transparent 50%),
+		radial-gradient(at 0% 100%, rgba(34, 211, 238, 0.1) 0px, transparent 50%);
+}
+
+/* Glass morphism effect */
+.glass-card {
+	@apply bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl border border-white/20 dark:border-gray-700/50;
 }
