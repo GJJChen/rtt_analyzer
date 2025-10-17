@@ -13,6 +13,7 @@
     "shell:allow-execute",
     "shell:allow-kill",
     "dialog:allow-open",
+    "dialog:allow-save",
     {
       "identifier": "fs:allow-write-file",
       "allow": [

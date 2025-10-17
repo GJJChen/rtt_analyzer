@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { File, UploadCloud, BarChart2, Table, BrainCircuit, Moon, Sun, AlertTriangle, FolderOpen, Trash2, ExternalLink, TrendingUp, TrendingDown } from 'lucide-react';
+import { File, UploadCloud, BarChart2, Table, BrainCircuit, Moon, Sun, AlertTriangle, FolderOpen, Trash2, ExternalLink, TrendingUp, TrendingDown, Download } from 'lucide-react';
 // Tauri v2 正确的导入方式
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { writeFile } from '@tauri-apps/plugin-fs';
-import { open } from '@tauri-apps/plugin-dialog';
+import { save, open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { ToastContainer } from './components/Toast';
@@ -43,7 +43,8 @@ function App() {
   const dropZoneRef = useRef(null); // 引用拖拽区域元素
   const handleFileDropRef = useRef(null); // 引用最新的 handleFileDrop 函数
   const [comparisonsData, setComparisonsData] = useState(null); // comparisons.csv 数据
-  const chartRef = useRef(null); // 引用 ECharts 实例
+  const chartRef = useRef(null); // 引用 CDF 图表 ECharts 实例
+  const trendChartRef = useRef(null); // 引用趋势图表 ECharts 实例
   const [inputDir, setInputDir] = useState(''); // 输入文件根目录
   const [outputBaseDir, setOutputBaseDir] = useState(''); // 输出结果文件夹根目录
   const [contextMenu, setContextMenu] = useState(null); // 右键菜单状态
@@ -301,6 +302,77 @@ function App() {
     }
   }, [analysisResult, darkMode, addToast]);
 
+  // 手动保存图表（用户点击按钮触发）
+  const handleManualSaveChart = useCallback(async () => {
+    // 根据当前激活的标签页选择对应的图表引用
+    let currentChartRef = null;
+    let chartType = '';
+    
+    if (activeTab === 'chart' && chartRef.current && analysisResult) {
+      currentChartRef = chartRef.current;
+      chartType = 'cdf';
+    } else if (activeTab === 'trend' && trendChartRef.current && comparisonsData) {
+      currentChartRef = trendChartRef.current;
+      chartType = 'trend';
+    }
+    
+    if (!currentChartRef) {
+      addToast('没有可保存的图表', 'warning');
+      return;
+    }
+    
+    try {
+      const echartsInstance = currentChartRef.getEchartsInstance();
+      const imageData = echartsInstance.getDataURL({
+        type: 'png',
+        pixelRatio: 2,
+        backgroundColor: darkMode ? '#1f2937' : '#ffffff',
+        excludeComponents: ['toolbox', 'dataZoom']
+      });
+      
+      // 将 base64 转换为字节数组
+      const base64Data = imageData.split(',')[1];
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // 打开保存对话框
+      const baseName = analysisResult?.base_name || 'rtt_analysis';
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filePath = await save({
+        defaultPath: `${baseName}_${chartType}_${timestamp}.png`,
+        filters: [{
+          name: 'PNG 图片',
+          extensions: ['png']
+        }]
+      });
+      
+      if (filePath) {
+        await writeFile(filePath, bytes);
+        addToast('图表已保存', 'success');
+        console.log(`Chart manually saved to: ${filePath}`);
+      }
+    } catch (error) {
+      console.error('Failed to save chart:', error);
+      addToast('保存图表失败: ' + error.message, 'error');
+    }
+  }, [activeTab, chartRef, trendChartRef, analysisResult, comparisonsData, darkMode, addToast]);
+
+  // 监听工具栏保存图片事件
+  useEffect(() => {
+    const handleSaveChartEvent = () => {
+      handleManualSaveChart();
+    };
+    
+    window.addEventListener('saveChartImage', handleSaveChartEvent);
+    
+    return () => {
+      window.removeEventListener('saveChartImage', handleSaveChartEvent);
+    };
+  }, [handleManualSaveChart]);
+
   // 当图表数据更新时自动保存
   useEffect(() => {
     if (analysisResult && chartRef.current) {
@@ -544,10 +616,18 @@ function App() {
             title: '还原'
           },
           saveAsImage: {
+            show: false // 隐藏默认的保存按钮，因为在 Tauri 中不工作
+          },
+          // 自定义保存按钮
+          mySaveImage: {
+            show: true,
             title: '保存为图片',
-            pixelRatio: 2,
-            backgroundColor: darkMode ? '#1f2937' : '#ffffff',
-            excludeComponents: ['toolbox', 'dataZoom'] // 保存时排除工具箱和缩放滑动条
+            icon: 'path://M4.7,22.9L29.3,45.5L54.7,23.9M4.6,43.6L4.6,58L53.8,58L53.8,43.6M29.2,45.1L29.2,0',
+            onclick: function() {
+              // 触发手动保存函数
+              const event = new CustomEvent('saveChartImage');
+              window.dispatchEvent(event);
+            }
           }
         },
         iconStyle: {
@@ -736,10 +816,18 @@ function App() {
             title: '还原'
           },
           saveAsImage: {
+            show: false // 隐藏默认的保存按钮
+          },
+          // 自定义保存按钮
+          mySaveImage: {
+            show: true,
             title: '保存为图片',
-            pixelRatio: 2,
-            backgroundColor: darkMode ? '#1f2937' : '#ffffff',
-            excludeComponents: ['toolbox', 'dataZoom'] // 保存时排除工具箱和缩放滑动条
+            icon: 'path://M4.7,22.9L29.3,45.5L54.7,23.9M4.6,43.6L4.6,58L53.8,58L53.8,43.6M29.2,45.1L29.2,0',
+            onclick: function() {
+              // 触发手动保存函数
+              const event = new CustomEvent('saveChartImage');
+              window.dispatchEvent(event);
+            }
           }
         },
         iconStyle: {
@@ -1129,6 +1217,7 @@ function App() {
           <div className="lg:col-span-2 flex flex-col gap-4 md:gap-5">
             <Card>
               <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 mb-3 pb-2">
+                <div className="flex-1 flex flex-wrap gap-2">
                   <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')}>
                     <span className="flex items-center justify-center">
                       <BarChart2 size={16} className="mr-2"/>CDF 分析
@@ -1144,6 +1233,18 @@ function App() {
                       <BarChart2 size={16} className="mr-2"/>趋势对比
                     </span>
                   </TabButton>
+                </div>
+                {/* 保存图表按钮 - 仅在图表标签页显示 */}
+                {activeTab === 'chart' && analysisResult && (
+                  <button
+                    onClick={handleManualSaveChart}
+                    className="px-3 py-2 text-xs md:text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-1.5"
+                    title="保存图表为PNG图片"
+                  >
+                    <Download size={14} />
+                    <span className="hidden sm:inline">保存图表</span>
+                  </button>
+                )}
               </div>
               
               <div>
@@ -1220,7 +1321,12 @@ function App() {
                     <ChartSkeleton />
                   ) : comparisonsData && comparisonsData.all_rows && comparisonsData.all_rows.length > 0 ? (
                     <div>
-                      <ReactECharts option={trendChartOption} style={{ height: '380px' }} theme={darkMode ? 'dark' : 'light'} />
+                      <ReactECharts 
+                        ref={trendChartRef}
+                        option={trendChartOption} 
+                        style={{ height: '380px' }} 
+                        theme={darkMode ? 'dark' : 'light'} 
+                      />
                       <div className="mt-2 p-2.5 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
                         <p className="text-xs text-purple-700 dark:text-purple-400 flex items-start gap-2">
                           <span className="inline-block mt-0.5">💡</span>
