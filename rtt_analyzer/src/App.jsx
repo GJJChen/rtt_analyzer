@@ -14,7 +14,7 @@ import EmptyState from './components/EmptyState';
 
 // --- Helper Components for UI Styling ---
 const Card = ({ children, className = '' }) => (
-  <div className={`glass-card shadow-xl rounded-xl p-4 md:p-5 animate-fade-in ${className}`}>
+  <div className={`glass-card shadow-xl rounded-xl p-3 md:p-4 animate-fade-in ${className}`}>
     {children}
   </div>
 );
@@ -579,6 +579,25 @@ function App() {
     const maxRTT = Math.max(...x);
     const xAxisMax = Math.min(stats.p999_ms * 1.2, maxRTT);
 
+    // 为5条统计线分配标签位置（上方/下方交替），根据值的大小排序
+    const statLines = [
+      { name: 'Mean', value: stats.mean_ms, color: '#10b981' },
+      { name: 'P50', value: stats.p50_ms, color: '#f59e0b' },
+      { name: 'P90', value: stats.p90_ms, color: '#ef4444' },
+      { name: 'P99', value: stats.p99_ms, color: '#8b5cf6' },
+      { name: 'P99.9', value: stats.p999_ms, color: '#ec4899' }
+    ];
+    
+    // 按值从小到大排序
+    statLines.sort((a, b) => a.value - b.value);
+    
+    // 分配位置：交替上下，从最小值开始
+    const labelPositions = {};
+    statLines.forEach((line, index) => {
+      // 偶数索引(0,2,4)放下方，奇数索引(1,3)放上方
+      labelPositions[line.name] = index % 2 === 0 ? -0.05 : 1.05;
+    });
+
     return {
       tooltip: {
         trigger: 'axis',
@@ -601,6 +620,24 @@ function App() {
           color: darkMode ? '#f3f4f6' : '#111827'
         },
         extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);'
+      },
+      // 添加图例 - 两行显示
+      legend: {
+        data: ['CDF 曲线', 'Mean', 'P50', 'P90', 'P99', 'P99.9'],
+        textStyle: { color: darkMode ? '#ccc' : '#333', fontSize: 12 },
+        top: 0,
+        left: 'center',
+        itemWidth: 25,
+        itemHeight: 14,
+        itemGap: 15,
+        selected: {
+          'CDF 曲线': true,
+          'Mean': true,
+          'P50': true,
+          'P90': true,
+          'P99': true,
+          'P99.9': true
+        }
       },
       // 添加工具箱，包含缩放、还原、保存等功能
       toolbox: {
@@ -656,8 +693,8 @@ function App() {
           xAxisIndex: [0],
           start: 0,
           end: 100,
-          height: 20,
-          bottom: 10,
+          height: 18,
+          bottom: 5,
           show: true, // 在界面上显示
           showDetail: false, // 不显示详细数值
           borderColor: darkMode ? '#4b5563' : '#d1d5db',
@@ -706,73 +743,170 @@ function App() {
         nameTextStyle: { color: darkMode ? '#ccc' : '#333', fontSize: 12 },
         nameGap: 35, // 标签与轴线的距离
         axisLine: { lineStyle: { color: darkMode ? '#ccc' : '#333' } },
-        min: 0,
-        max: 1,
+        min: -0.1, // 扩展范围，为下方标签留出空间
+        max: 1.1, // 扩展范围，为上方标签留出空间
         axisLabel: {
-          formatter: (value) => (value * 100).toFixed(0) + '%',
+          formatter: (value) => {
+            // 只显示0-100%的标签
+            if (value < 0 || value > 1) return '';
+            return (value * 100).toFixed(0) + '%';
+          },
           color: darkMode ? '#9ca3af' : '#6b7280'
         }
       },
-      series: [{
-        data: y.map((val, index) => [x[index], val]),
-        type: 'line',
-        smooth: true,
-        showSymbol: false,
-        lineStyle: {
-          color: '#3b82f6',
-          width: 2,
-        },
-        markLine: {
-          symbol: 'none',
-          animation: false,
-          label: {
-            position: 'end',
-            formatter: '{b}',
-            fontSize: 11,
+      series: [
+        {
+          name: 'CDF 曲线',
+          data: y.map((val, index) => [x[index], val]),
+          type: 'line',
+          smooth: true,
+          showSymbol: false,
+          lineStyle: {
+            color: '#3b82f6',
+            width: 2,
           },
+        },
+        // Mean 线 - 使用两个点创建垂直线
+        {
+          name: 'Mean',
+          type: 'line',
+          data: [[stats.mean_ms, 0], [stats.mean_ms, 1]],
+          showSymbol: false,
           lineStyle: {
             type: 'dashed',
             width: 2,
+            color: '#10b981'
           },
-          data: [
-            { 
-              name: `Mean: ${stats.mean_ms.toFixed(2)}ms`, 
-              xAxis: stats.mean_ms,
-              lineStyle: { color: '#10b981' },
-              label: { color: '#10b981', position: 'insideEndTop' }
+          markPoint: {
+            symbol: 'rect',
+            symbolSize: [1, 1],
+            label: {
+              show: true,
+              formatter: `Mean\n${stats.mean_ms.toFixed(2)}ms`,
+              fontSize: 11,
+              color: darkMode ? '#000' : '#000',
+              fontWeight: 'bold',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: [3, 6],
+              borderRadius: 3
             },
-            { 
-              name: `P50: ${stats.p50_ms.toFixed(2)}ms`, 
-              xAxis: stats.p50_ms,
-              lineStyle: { color: '#f59e0b' },
-              label: { color: '#f59e0b', position: 'insideEndTop' }
-            },
-            { 
-              name: `P90: ${stats.p90_ms.toFixed(2)}ms`, 
-              xAxis: stats.p90_ms,
-              lineStyle: { color: '#ef4444' },
-              label: { color: '#ef4444', position: 'insideEndTop' }
-            },
-            { 
-              name: `P99: ${stats.p99_ms.toFixed(2)}ms`, 
-              xAxis: stats.p99_ms,
-              lineStyle: { color: '#8b5cf6' },
-              label: { color: '#8b5cf6', position: 'insideEndTop' }
-            },
-            { 
-              name: `P99.9: ${stats.p999_ms.toFixed(2)}ms`, 
-              xAxis: stats.p999_ms,
-              lineStyle: { color: '#ec4899' },
-              label: { color: '#ec4899', position: 'insideEndTop' }
-            },
-          ],
+            data: [{ coord: [stats.mean_ms, labelPositions['Mean']] }]
+          }
         },
-      }],
+        // P50 线
+        {
+          name: 'P50',
+          type: 'line',
+          data: [[stats.p50_ms, 0], [stats.p50_ms, 1]],
+          showSymbol: false,
+          lineStyle: {
+            type: 'dashed',
+            width: 2,
+            color: '#f59e0b'
+          },
+          markPoint: {
+            symbol: 'rect',
+            symbolSize: [1, 1],
+            label: {
+              show: true,
+              formatter: `P50\n${stats.p50_ms.toFixed(2)}ms`,
+              fontSize: 11,
+              color: darkMode ? '#000' : '#000',
+              fontWeight: 'bold',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: [3, 6],
+              borderRadius: 3
+            },
+            data: [{ coord: [stats.p50_ms, labelPositions['P50']] }]
+          }
+        },
+        // P90 线
+        {
+          name: 'P90',
+          type: 'line',
+          data: [[stats.p90_ms, 0], [stats.p90_ms, 1]],
+          showSymbol: false,
+          lineStyle: {
+            type: 'dashed',
+            width: 2,
+            color: '#ef4444'
+          },
+          markPoint: {
+            symbol: 'rect',
+            symbolSize: [1, 1],
+            label: {
+              show: true,
+              formatter: `P90\n${stats.p90_ms.toFixed(2)}ms`,
+              fontSize: 11,
+              color: darkMode ? '#000' : '#000',
+              fontWeight: 'bold',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: [3, 6],
+              borderRadius: 3
+            },
+            data: [{ coord: [stats.p90_ms, labelPositions['P90']] }]
+          }
+        },
+        // P99 线
+        {
+          name: 'P99',
+          type: 'line',
+          data: [[stats.p99_ms, 0], [stats.p99_ms, 1]],
+          showSymbol: false,
+          lineStyle: {
+            type: 'dashed',
+            width: 2,
+            color: '#8b5cf6'
+          },
+          markPoint: {
+            symbol: 'rect',
+            symbolSize: [1, 1],
+            label: {
+              show: true,
+              formatter: `P99\n${stats.p99_ms.toFixed(2)}ms`,
+              fontSize: 11,
+              color: darkMode ? '#000' : '#000',
+              fontWeight: 'bold',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: [3, 6],
+              borderRadius: 3
+            },
+            data: [{ coord: [stats.p99_ms, labelPositions['P99']] }]
+          }
+        },
+        // P99.9 线
+        {
+          name: 'P99.9',
+          type: 'line',
+          data: [[stats.p999_ms, 0], [stats.p999_ms, 1]],
+          showSymbol: false,
+          lineStyle: {
+            type: 'dashed',
+            width: 2,
+            color: '#ec4899'
+          },
+          markPoint: {
+            symbol: 'rect',
+            symbolSize: [1, 1],
+            label: {
+              show: true,
+              formatter: `P99.9\n${stats.p999_ms.toFixed(2)}ms`,
+              fontSize: 11,
+              color: darkMode ? '#000' : '#000',
+              fontWeight: 'bold',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: [3, 6],
+              borderRadius: 3
+            },
+            data: [{ coord: [stats.p999_ms, labelPositions['P99.9']] }]
+          }
+        }
+      ],
       grid: {
-        left: '6%', // 增加左侧空间以显示Y轴标签
-        right: '4%',
-        bottom: '18%', // 增加底部空间以容纳滑动条和X轴标签
-        top: '12%', // 增加顶部空间以容纳工具箱
+        left: '5%',
+        right: '3%',
+        bottom: '10%', // 进一步减少底部空间，滑动条更靠近图表
+        top: '8%', // 进一步减少顶部空间，图例更靠近图表
         containLabel: true,
       },
     };
@@ -855,8 +989,8 @@ function App() {
           xAxisIndex: [0],
           start: 0,
           end: 100,
-          height: 20,
-          bottom: 10,
+          height: 18,
+          bottom: 2,
           show: true,
           showDetail: false,
           borderColor: darkMode ? '#4b5563' : '#d1d5db',
@@ -955,10 +1089,10 @@ function App() {
         }
       ],
       grid: {
-        left: '6%', // 增加左侧空间以显示Y轴标签
-        right: '4%',
-        bottom: '15%', // 增加底部空间以显示X轴标签
-        top: '15%',
+        left: '5%',
+        right: '3%',
+        bottom: '10%', // 减少底部空间
+        top: '10%', // 减少顶部空间
         containLabel: true
       }
     };
@@ -1009,9 +1143,9 @@ function App() {
           </div>
         </header>
         
-        <main className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <main className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
           {/* Left Column */}
-          <div className="lg:col-span-1 flex flex-col gap-4 md:gap-5">
+          <div className="lg:col-span-1 flex flex-col gap-2 md:gap-3">
             {/* 目录配置 */}
             <Card>
               <h2 className="text-lg md:text-xl font-semibold mb-3 flex items-center">
@@ -1214,7 +1348,7 @@ function App() {
           </div>
           
           {/* Right Column */}
-          <div className="lg:col-span-2 flex flex-col gap-4 md:gap-5">
+          <div className="lg:col-span-2 flex flex-col gap-2 md:gap-3">
             <Card>
               <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 mb-3 pb-2">
                 <div className="flex-1 flex flex-wrap gap-2">
@@ -1256,15 +1390,15 @@ function App() {
                       <ReactECharts 
                         ref={chartRef}
                         option={chartOption} 
-                        style={{ height: '380px' }} 
+                        style={{ height: '384px' }} 
                         theme={darkMode ? 'dark' : 'light'} 
                       />
-                      <div className="mt-2 p-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="mt-1 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                         <p className="text-xs text-blue-700 dark:text-blue-400 flex items-start gap-2">
                           <span className="inline-block mt-0.5">💡</span>
                           <span>
                             <strong>交互提示：</strong>
-                            鼠标滚轮缩放 | 框选区域放大 | 拖拽图表平移 | 工具栏保存图片或还原视图
+                            鼠标滚轮缩放 | 框选区域放大 | 拖拽图表平移 | 点击图例显示/隐藏 | 工具栏保存图片或还原视图
                           </span>
                         </p>
                       </div>
@@ -1324,10 +1458,10 @@ function App() {
                       <ReactECharts 
                         ref={trendChartRef}
                         option={trendChartOption} 
-                        style={{ height: '380px' }} 
+                        style={{ height: '384px' }} 
                         theme={darkMode ? 'dark' : 'light'} 
                       />
-                      <div className="mt-2 p-2.5 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                      <div className="mt-1 p-2 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
                         <p className="text-xs text-purple-700 dark:text-purple-400 flex items-start gap-2">
                           <span className="inline-block mt-0.5">💡</span>
                           <span>
