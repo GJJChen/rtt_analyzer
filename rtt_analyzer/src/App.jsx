@@ -1100,7 +1100,25 @@ function App() {
     if (!comparisonsData || !comparisonsData.all_rows || comparisonsData.all_rows.length === 0) return {};
 
     const allRows = comparisonsData.all_rows;
-    const xData = allRows.map((_, index) => index + 1); // 序号
+    
+    // 智能处理文件名显示
+    const xData = allRows.map(row => {
+      let fileName = row.source_file || '未命名';
+      
+      // 去掉 .csv 扩展名（如果有）
+      if (fileName.endsWith('.csv')) {
+        fileName = fileName.slice(0, -4);
+      }
+      
+      // 如果文件名超过 18 字符，保留开头和结尾的关键信息
+      if (fileName.length > 18) {
+        // 策略：保留前 8 字符 + ... + 后 8 字符
+        // 这样可以同时看到文件名的开头和结尾，区分度更高
+        return fileName.substring(0, 8) + '...' + fileName.substring(fileName.length - 8);
+      }
+      
+      return fileName;
+    });
 
     return {
       tooltip: {
@@ -1117,7 +1135,18 @@ function App() {
         textStyle: {
           color: darkMode ? '#f3f4f6' : '#111827'
         },
-        extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);'
+        extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);',
+        // 在 tooltip 中显示完整文件名
+        formatter: function(params) {
+          let result = `<div style="font-weight: bold; margin-bottom: 4px;">${allRows[params[0].dataIndex].source_file || '未命名'}</div>`;
+          params.forEach(param => {
+            result += `<div style="display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 10px; height: 10px; background-color: ${param.color}; border-radius: 50%;"></span>
+              <span>${param.seriesName}: <strong>${param.value.toFixed(2)} ms</strong></span>
+            </div>`;
+          });
+          return result;
+        }
       },
       // 添加工具箱
       toolbox: {
@@ -1209,13 +1238,18 @@ function App() {
       xAxis: {
         type: 'category',
         data: xData,
-        name: '序号',
-        nameLocation: 'middle', // 标签位置在中间
+        name: '文件名',
+        nameLocation: 'middle',
         nameTextStyle: { color: darkMode ? '#ccc' : '#333', fontSize: 12 },
-        nameGap: 25, // 标签与轴线的距离
+        nameGap: 30,
         axisLine: { lineStyle: { color: darkMode ? '#ccc' : '#333' } },
         axisLabel: {
-          color: darkMode ? '#9ca3af' : '#6b7280'
+          color: darkMode ? '#9ca3af' : '#6b7280',
+          fontSize: 11,
+          interval: 0, // 显示所有标签
+          overflow: 'truncate', // 超出部分截断
+          width: 80, // 标签最大宽度
+          ellipsis: '...' // 截断时显示省略号
         }
       },
       yAxis: {
@@ -1236,7 +1270,15 @@ function App() {
           data: allRows.map(row => row.mean_ms),
           smooth: true,
           lineStyle: { color: '#10b981', width: 2 },
-          itemStyle: { color: '#10b981' }
+          itemStyle: { color: '#10b981' },
+          endLabel: {
+            show: true,
+            formatter: '{a}',
+            color: '#10b981',
+            fontSize: 12,
+            fontWeight: 'bold',
+            distance: 10
+          }
         },
         {
           name: 'P50',
@@ -1244,7 +1286,15 @@ function App() {
           data: allRows.map(row => row.p50_ms),
           smooth: true,
           lineStyle: { color: '#f59e0b', width: 2 },
-          itemStyle: { color: '#f59e0b' }
+          itemStyle: { color: '#f59e0b' },
+          endLabel: {
+            show: true,
+            formatter: '{a}',
+            color: '#f59e0b',
+            fontSize: 12,
+            fontWeight: 'bold',
+            distance: 10
+          }
         },
         {
           name: 'P90',
@@ -1252,7 +1302,15 @@ function App() {
           data: allRows.map(row => row.p90_ms),
           smooth: true,
           lineStyle: { color: '#ef4444', width: 2 },
-          itemStyle: { color: '#ef4444' }
+          itemStyle: { color: '#ef4444' },
+          endLabel: {
+            show: true,
+            formatter: '{a}',
+            color: '#ef4444',
+            fontSize: 12,
+            fontWeight: 'bold',
+            distance: 10
+          }
         },
         {
           name: 'P99',
@@ -1260,7 +1318,15 @@ function App() {
           data: allRows.map(row => row.p99_ms),
           smooth: true,
           lineStyle: { color: '#8b5cf6', width: 2 },
-          itemStyle: { color: '#8b5cf6' }
+          itemStyle: { color: '#8b5cf6' },
+          endLabel: {
+            show: true,
+            formatter: '{a}',
+            color: '#8b5cf6',
+            fontSize: 12,
+            fontWeight: 'bold',
+            distance: 10
+          }
         },
         {
           name: 'P99.9',
@@ -1268,14 +1334,22 @@ function App() {
           data: allRows.map(row => row.p999_ms),
           smooth: true,
           lineStyle: { color: '#ec4899', width: 2 },
-          itemStyle: { color: '#ec4899' }
+          itemStyle: { color: '#ec4899' },
+          endLabel: {
+            show: true,
+            formatter: '{a}',
+            color: '#ec4899',
+            fontSize: 12,
+            fontWeight: 'bold',
+            distance: 10
+          }
         }
       ],
       grid: {
         left: '5%',
-        right: '3%',
-        bottom: '10%', // 减少底部空间
-        top: '10%', // 减少顶部空间
+        right: '8%', // 增加右侧空间，为端点标签留出显示空间
+        bottom: '12%', // 适中的底部空间
+        top: '10%',
         containLabel: true
       }
     };
