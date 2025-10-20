@@ -1,14 +1,31 @@
 import React, { useEffect } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
-const Toast = ({ message, type = 'info', onClose, duration = 4000 }) => {
+const Toast = ({ message, type = 'info', onClose, duration }) => {
+  // 根据类型设置默认持续时间
+  const getDefaultDuration = () => {
+    switch (type) {
+      case 'success':
+        return 2000; // 成功提示 2 秒（快速消失）
+      case 'error':
+        return 8000; // 错误提示 8 秒（持续更久）
+      case 'warning':
+        return 5000; // 警告提示 5 秒
+      case 'info':
+      default:
+        return 4000; // 信息提示 4 秒
+    }
+  };
+
+  const finalDuration = duration !== undefined ? duration : getDefaultDuration();
+
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose();
-    }, duration);
+    }, finalDuration);
 
     return () => clearTimeout(timer);
-  }, [duration, onClose]);
+  }, [finalDuration, onClose]);
 
   const types = {
     success: {
