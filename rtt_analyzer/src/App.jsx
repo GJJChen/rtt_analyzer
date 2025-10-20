@@ -52,6 +52,7 @@ function App() {
   const [backendStatus, setBackendStatus] = useState('connecting'); // 后端状态: connecting, ready, error
   const [toasts, setToasts] = useState([]); // Toast通知列表
   const [isProcessing, setIsProcessing] = useState(false); // 处理中状态
+  const [isInitialized, setIsInitialized] = useState(false); // 是否已完成初始化（用于控制启动画面）
   
   // 合并数据功能状态
   const [isMergeMode, setIsMergeMode] = useState(false); // 是否处于合并模式
@@ -278,6 +279,70 @@ function App() {
       setIsProcessing(false);
     }
   }, [selectedRows, calculateMergedData, addToast]);
+
+  // 计算每列的最大值和最小值（仅针对数值列）
+  const getColumnExtremes = useMemo(() => {
+    if (!comparisonsData || !comparisonsData.rows || comparisonsData.rows.length === 0) {
+      return {};
+    }
+
+    const numericColumns = ['mean_ms', 'p50_ms', 'p90_ms', 'p99_ms', 'p999_ms'];
+    const extremes = {};
+
+    numericColumns.forEach(col => {
+      const values = comparisonsData.rows
+        .map(row => row[col])
+        .filter(val => typeof val === 'number' && !isNaN(val));
+      
+      if (values.length > 0) {
+        extremes[col] = {
+          min: Math.min(...values),
+          max: Math.max(...values)
+        };
+      }
+    });
+
+    return extremes;
+  }, [comparisonsData]);
+
+  // 获取单元格样式类名
+  const getCellStyle = useCallback((col, value) => {
+    const extremes = getColumnExtremes[col];
+    if (!extremes || typeof value !== 'number') {
+      return 'text-gray-900 dark:text-gray-100';
+    }
+
+    if (value === extremes.max) {
+      return 'text-red-600 dark:text-red-400 font-bold';
+    } else if (value === extremes.min) {
+      return 'text-green-600 dark:text-green-400 font-bold';
+    }
+    
+    return 'text-gray-900 dark:text-gray-100';
+  }, [getColumnExtremes]);
+
+  // 格式化 timestamp 显示（去除年份）
+  const formatTimestamp = useCallback((timestamp) => {
+    if (!timestamp) return '';
+    // 如果包含年份（格式：2024/01/02 12:34），则去除年份
+    // 匹配格式：YYYY/MM/DD HH:MM 或 YYYY-MM-DD HH:MM
+    const match = timestamp.match(/^\d{4}[/-](.+)$/);
+    if (match) {
+      return match[1]; // 返回去除年份后的部分
+    }
+    return timestamp; // 如果已经没有年份，直接返回
+  }, []);
+
+  // 限制 source_file 名称长度（最大 "sample_rtt0102 - 副本 (3)平均" 的长度）
+  const formatSourceFileName = useCallback((fileName) => {
+    if (!fileName) return '';
+    const maxLength = 30; // "sample_rtt0102 - 副本 (3)平均" 约 30 字符
+    if (fileName.length <= maxLength) {
+      return fileName;
+    }
+    // 截断并添加省略号
+    return fileName.substring(0, maxLength - 3) + '...';
+  }, []);
 
 
   // 打开 comparisons.csv 文件
@@ -1685,8 +1750,19 @@ function App() {
                                   </td>
                                 )}
                                 {comparisonsData.columns.map((col, colIdx) => (
-                                  <td key={colIdx} className="px-3 py-2 whitespace-nowrap text-xs md:text-sm text-gray-900 dark:text-gray-100">
-                                    {typeof row[col] === 'number' ? row[col].toFixed(2) : row[col]}
+                                  <td 
+                                    key={colIdx} 
+                                    className={`px-3 py-2 whitespace-nowrap text-xs md:text-sm ${getCellStyle(col, row[col])}`}
+                                    title={col === 'source_file' && row[col]?.length > 30 ? row[col] : undefined}
+                                  >
+                                    {typeof row[col] === 'number' 
+                                      ? row[col].toFixed(2) 
+                                      : col === 'timestamp' 
+                                        ? formatTimestamp(row[col])
+                                        : col === 'source_file'
+                                          ? formatSourceFileName(row[col])
+                                          : row[col]
+                                    }
                                   </td>
                                 ))}
                               </tr>
@@ -1869,7 +1945,12 @@ function App() {
                           return (
                             <div key={idx} className="flex items-center gap-2">
                               <span className="font-mono text-blue-600 dark:text-blue-400">#{idx + 1}</span>
-                              <span className="text-gray-700 dark:text-gray-300">{row.source_file || '未命名'}</span>
+                              <span 
+                                className="text-gray-700 dark:text-gray-300"
+                                title={row.source_file?.length > 30 ? row.source_file : undefined}
+                              >
+                                {formatSourceFileName(row.source_file || '未命名')}
+                              </span>
                             </div>
                           );
                         })}
@@ -1890,10 +1971,18 @@ function App() {
                             <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">
                               {col}
                             </div>
-                            <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                            <div 
+                              className="text-sm font-bold text-gray-900 dark:text-gray-100"
+                              title={col === 'source_file' && calculateMergedData[col]?.length > 30 ? calculateMergedData[col] : undefined}
+                            >
                               {typeof calculateMergedData[col] === 'number' 
                                 ? calculateMergedData[col].toFixed(2) 
-                                : calculateMergedData[col]}
+                                : col === 'timestamp'
+                                  ? formatTimestamp(calculateMergedData[col])
+                                  : col === 'source_file'
+                                    ? formatSourceFileName(calculateMergedData[col])
+                                    : calculateMergedData[col]
+                              }
                             </div>
                           </div>
                         ))}

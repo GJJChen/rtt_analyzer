@@ -39,6 +39,12 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[tauri::command]
+async fn show_window(window: tauri::Window) -> Result<(), String> {
+    window.show().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // 启动后端服务器
 fn start_backend(_app: &AppHandle) -> Result<u32, String> {
     log_to_file("=== Starting backend server ===");
@@ -87,9 +93,19 @@ fn start_backend(_app: &AppHandle) -> Result<u32, String> {
     let mut cmd = Command::new(&backend_exe);
     cmd.current_dir(&backend_dir);
     
+    // 在 Windows 上，需要将后端目录添加到 PATH 环境变量
+    // 这样 PyInstaller 才能找到 _internal 目录中的 DLL
     #[cfg(target_os = "windows")]
     {
         cmd.creation_flags(CREATE_NO_WINDOW);
+        
+        // 获取当前 PATH 并添加后端目录
+        if let Ok(current_path) = std::env::var("PATH") {
+            let backend_dir_str = backend_dir.to_string_lossy();
+            let new_path = format!("{};{}", backend_dir_str, current_path);
+            cmd.env("PATH", new_path);
+            log_to_file(&format!("Updated PATH to include backend directory: {}", backend_dir_str));
+        }
     }
     
     let child = cmd.spawn()
@@ -207,13 +223,8 @@ pub fn run() {
                 }
             }
             
-            // 等待一小段时间让后端启动，然后显示窗口
-            let window_clone = window.clone();
-            tauri::async_runtime::spawn(async move {
-                std::thread::sleep(std::time::Duration::from_millis(200));
-                let _ = window_clone.show();
-                let _ = window_clone.set_focus();
-            });
+            // 不在这里显示窗口，等待前端加载完启动画面后主动调用
+            // 前端会在 index.html 加载完成后调用 show_window 命令
             
             Ok(())
         })
@@ -234,7 +245,7 @@ pub fn run() {
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet, show_window])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app_handle, event| {

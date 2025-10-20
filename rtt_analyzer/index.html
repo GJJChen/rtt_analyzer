@@ -84,6 +84,22 @@
     </div>
     
     <div id="root"></div>
+    
+    <!-- 启动画面加载完成后立即显示窗口 -->
+    <script type="module">
+      import { invoke } from '@tauri-apps/api/core';
+      
+      // 页面加载完成后立即显示窗口（此时启动画面已在 DOM 中）
+      window.addEventListener('load', async () => {
+        try {
+          await invoke('show_window');
+          console.log('Window shown with splash screen');
+        } catch (err) {
+          console.error('Failed to show window:', err);
+        }
+      });
+    </script>
+    
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
