@@ -54,7 +54,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false); // 处理中状态
 
   // Toast管理函数
-  const addToast = useCallback((message, type = 'info', duration = 4000) => {
+  const addToast = useCallback((message, type = 'info', duration) => {
     const id = Date.now() + Math.random();
     setToasts((prev) => [...prev, { id, message, type, duration }]);
   }, []);
@@ -185,7 +185,7 @@ function App() {
       
       if (response.ok) {
         setComparisonsData({ rows: [], columns: [], all_rows: [] });
-        addToast('历史记录已清除', 'success', 3000);
+        addToast('历史记录已清除', 'success');
         console.log('Comparisons cleared successfully');
       }
     } catch (error) {
@@ -265,7 +265,7 @@ function App() {
         if (response.ok) {
           console.log('Backend is ready!');
           setBackendStatus('ready');
-          addToast('后端服务已就绪', 'success', 3000);
+          addToast('后端服务已就绪', 'success');
           return true;
         }
       } catch (error) {
@@ -477,7 +477,7 @@ function App() {
 
         setFiles(prevFiles => prevFiles.map(f => f.id === file.id ? { ...f, status: 'success', result: result.data } : f));
         setAnalysisResult(result.data);
-        addToast(`成功分析文件: ${file.name}`, 'success', 3000);
+        addToast(`成功分析文件: ${file.name}`, 'success');
         
         // 刷新 comparisons 数据
         await fetchComparisons();

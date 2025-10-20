@@ -6,7 +6,7 @@ const Toast = ({ message, type = 'info', onClose, duration }) => {
   const getDefaultDuration = () => {
     switch (type) {
       case 'success':
-        return 2000; // 成功提示 2 秒（快速消失）
+        return 750; // 成功提示 0.1 秒（瞬间消失 - 测试用）
       case 'error':
         return 8000; // 错误提示 8 秒（持续更久）
       case 'warning':

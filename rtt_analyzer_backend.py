@@ -261,6 +261,65 @@ async def clear_comparisons_endpoint():
         raise HTTPException(status_code=500, detail=f"Failed to clear comparisons: {e}")
 
 
+class MergeRequest(BaseModel):
+    indices: list[int]  # 要合并的行索引列表
+
+
+@app.post("/merge-comparisons")
+async def merge_comparisons_endpoint(request: MergeRequest):
+    """
+    API endpoint to merge multiple comparison rows by averaging their metrics.
+    """
+    try:
+        comparison_csv_path = COMPARISONS_FILE
+        
+        if not os.path.exists(comparison_csv_path):
+            raise HTTPException(status_code=404, detail="Comparisons file not found")
+        
+        df = pd.read_csv(comparison_csv_path, encoding='utf-8')
+        
+        # 验证索引
+        if not request.indices or len(request.indices) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 rows required for merging")
+        
+        if any(i < 0 or i >= len(df) for i in request.indices):
+            raise HTTPException(status_code=400, detail="Invalid row indices")
+        
+        # 获取要合并的行
+        rows_to_merge = df.iloc[request.indices]
+        
+        # 计算平均值
+        merged_row = {
+            'timestamp': datetime.now().strftime("%m/%d %H:%M"),
+            'source_file': f"{rows_to_merge.iloc[0]['source_file']} (平均 x{len(request.indices)})",
+            'mean_ms': rows_to_merge['mean_ms'].mean(),
+            'p50_ms': rows_to_merge['p50_ms'].mean(),
+            'p90_ms': rows_to_merge['p90_ms'].mean(),
+            'p99_ms': rows_to_merge['p99_ms'].mean(),
+            'p999_ms': rows_to_merge['p999_ms'].mean()
+        }
+        
+        # 删除原始行并添加合并后的行
+        df = df.drop(request.indices)
+        df = pd.concat([df, pd.DataFrame([merged_row])], ignore_index=True)
+        
+        # 保存回文件
+        df.to_csv(comparison_csv_path, index=False, encoding='utf-8')
+        
+        print(f"Merged {len(request.indices)} rows into 1 averaged row")
+        
+        return {
+            "status": "success",
+            "message": f"Successfully merged {len(request.indices)} rows",
+            "merged_row": merged_row
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error merging comparisons: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to merge comparisons: {e}")
+
+
 @app.get("/get-config")
 async def get_config_endpoint():
     """
