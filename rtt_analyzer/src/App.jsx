@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { File, UploadCloud, BarChart2, Table, BrainCircuit, Moon, Sun, AlertTriangle, FolderOpen, Trash2, ExternalLink, TrendingUp, TrendingDown, Download, FolderSearch } from 'lucide-react';
+import { File, UploadCloud, BarChart2, Table, BrainCircuit, Moon, Sun, AlertTriangle, FolderOpen, Trash2, ExternalLink, TrendingUp, TrendingDown, Download, FolderSearch, X } from 'lucide-react';
 // Tauri v2 正确的导入方式
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -52,6 +52,11 @@ function App() {
   const [backendStatus, setBackendStatus] = useState('connecting'); // 后端状态: connecting, ready, error
   const [toasts, setToasts] = useState([]); // Toast通知列表
   const [isProcessing, setIsProcessing] = useState(false); // 处理中状态
+  
+  // 合并数据功能状态
+  const [isMergeMode, setIsMergeMode] = useState(false); // 是否处于合并模式
+  const [selectedRows, setSelectedRows] = useState(new Set()); // 选中的行索引
+  const [showMergePreview, setShowMergePreview] = useState(false); // 显示合并预览对话框
 
   // Toast管理函数
   const addToast = useCallback((message, type = 'info', duration) => {
@@ -193,6 +198,87 @@ function App() {
       addToast('清除历史记录失败: ' + error.message, 'error');
     }
   }, [addToast]);
+
+  // 合并数据相关函数
+  const toggleMergeMode = useCallback(() => {
+    setIsMergeMode(prev => !prev);
+    setSelectedRows(new Set());
+  }, []);
+
+  const toggleRowSelection = useCallback((rowIndex) => {
+    setSelectedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(rowIndex)) {
+        newSet.delete(rowIndex);
+      } else {
+        newSet.add(rowIndex);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const calculateMergedData = useMemo(() => {
+    if (!comparisonsData || selectedRows.size === 0) return null;
+
+    const selectedRowsData = Array.from(selectedRows).map(idx => comparisonsData.rows[idx]);
+    const numericColumns = ['mean_ms', 'p50_ms', 'p90_ms', 'p99_ms', 'p999_ms'];
+    
+    const merged = {};
+    comparisonsData.columns.forEach(col => {
+      if (numericColumns.includes(col)) {
+        // 计算平均值
+        const sum = selectedRowsData.reduce((acc, row) => acc + (row[col] || 0), 0);
+        merged[col] = sum / selectedRowsData.length;
+      } else if (col === 'source_file') {
+        // 文件名改为：第一个文件名 + "平均"
+        const firstName = selectedRowsData[0][col];
+        merged[col] = `${firstName}平均`;
+      } else {
+        // 其他列取第一个值
+        merged[col] = selectedRowsData[0][col];
+      }
+    });
+
+    return merged;
+  }, [comparisonsData, selectedRows]);
+
+  const confirmMerge = useCallback(async () => {
+    if (selectedRows.size < 2) {
+      addToast('请至少选择两行数据进行合并', 'warning');
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      const response = await fetch('http://127.0.0.1:8000/merge-rows', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          row_indices: Array.from(selectedRows),
+          merged_data: calculateMergedData
+        }),
+      });
+
+      if (response.ok) {
+        await fetchComparisons(); // 刷新数据
+        setIsMergeMode(false);
+        setSelectedRows(new Set());
+        setShowMergePreview(false);
+        addToast(`成功合并 ${selectedRows.size} 行数据`, 'success');
+      } else {
+        const error = await response.json();
+        addToast('合并失败: ' + error.detail, 'error');
+      }
+    } catch (error) {
+      console.error("Failed to merge rows:", error);
+      addToast('合并失败: ' + error.message, 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [selectedRows, calculateMergedData, addToast]);
+
 
   // 打开 comparisons.csv 文件
   const openComparisonsFile = useCallback(async () => {
@@ -1470,38 +1556,144 @@ function App() {
                   isProcessing && (!comparisonsData || comparisonsData.rows.length === 0) ? (
                     <TableSkeleton rows={6} cols={7} />
                   ) : comparisonsData && comparisonsData.rows && comparisonsData.rows.length > 0 ? (
-                    <div 
-                      className="overflow-x-auto rounded-lg"
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setContextMenu({
-                          x: e.clientX,
-                          y: e.clientY
-                        });
-                      }}
-                    >
-                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-700">
-                          <tr>
-                            {comparisonsData.columns.map((col, idx) => (
-                              <th key={idx} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                                {col}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                          {comparisonsData.rows.map((row, idx) => (
-                            <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                              {comparisonsData.columns.map((col, colIdx) => (
-                                <td key={colIdx} className="px-3 py-2 whitespace-nowrap text-xs md:text-sm text-gray-900 dark:text-gray-100">
-                                  {typeof row[col] === 'number' ? row[col].toFixed(2) : row[col]}
-                                </td>
+                    <div>
+                      {/* 合并操作工具栏 */}
+                      <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          {!isMergeMode ? (
+                            <>
+                              <button
+                                onClick={toggleMergeMode}
+                                className="px-3 py-2 text-xs md:text-sm font-medium text-white bg-gradient-to-r from-fuchsia-600 to-pink-500 hover:from-fuchsia-700 hover:to-pink-600 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-1.5"
+                                title="进入合并模式，选择多行数据进行平均合并"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                </svg>
+                                <span>合并数据</span>
+                              </button>
+                              <button
+                                onClick={fetchComparisons}
+                                className="px-3 py-2 text-xs md:text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-1.5"
+                                title="刷新数据对比表格"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <span>刷新</span>
+                              </button>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setIsMergeMode(false);
+                                  setSelectedRows(new Set());
+                                }}
+                                className="px-3 py-2 text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-all duration-200 flex items-center gap-1.5"
+                              >
+                                <X size={14} />
+                                <span>取消</span>
+                              </button>
+                              <button
+                                onClick={() => setShowMergePreview(true)}
+                                disabled={selectedRows.size < 2}
+                                className={`px-3 py-2 text-xs md:text-sm font-medium text-white rounded-lg transition-all duration-200 shadow-md flex items-center gap-1.5 ${
+                                  selectedRows.size >= 2
+                                    ? 'bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 hover:shadow-lg'
+                                    : 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed'
+                                }`}
+                                title={selectedRows.size < 2 ? '请至少选择两行数据' : '预览并确认合并'}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>确认合并 ({selectedRows.size})</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {isMergeMode && (
+                          <div className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-400 flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                            </svg>
+                            <span className="font-medium">点击行选择，至少选择2行进行合并</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 数据表格 */}
+                      <div 
+                        className="overflow-x-auto rounded-lg"
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({
+                            x: e.clientX,
+                            y: e.clientY
+                          });
+                        }}
+                      >
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                          <thead className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-700">
+                            <tr>
+                              {isMergeMode && (
+                                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider w-10">
+                                  <input 
+                                    type="checkbox"
+                                    className="w-4 h-4 rounded border-gray-300 text-fuchsia-600 focus:ring-fuchsia-500"
+                                    checked={selectedRows.size === comparisonsData.rows.length}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedRows(new Set(comparisonsData.rows.map((_, idx) => idx)));
+                                      } else {
+                                        setSelectedRows(new Set());
+                                      }
+                                    }}
+                                  />
+                                </th>
+                              )}
+                              {comparisonsData.columns.map((col, idx) => (
+                                <th key={idx} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                                  {col}
+                                </th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                            {comparisonsData.rows.map((row, idx) => (
+                              <tr 
+                                key={idx} 
+                                className={`transition-colors ${
+                                  isMergeMode 
+                                    ? selectedRows.has(idx)
+                                      ? 'bg-fuchsia-50 dark:bg-fuchsia-900/20 border-l-4 border-fuchsia-500'
+                                      : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'
+                                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                }`}
+                                onClick={() => isMergeMode && toggleRowSelection(idx)}
+                              >
+                                {isMergeMode && (
+                                  <td className="px-3 py-2 w-10">
+                                    <input 
+                                      type="checkbox"
+                                      className="w-4 h-4 rounded border-gray-300 text-fuchsia-600 focus:ring-fuchsia-500"
+                                      checked={selectedRows.has(idx)}
+                                      onChange={() => toggleRowSelection(idx)}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </td>
+                                )}
+                                {comparisonsData.columns.map((col, colIdx) => (
+                                  <td key={colIdx} className="px-3 py-2 whitespace-nowrap text-xs md:text-sm text-gray-900 dark:text-gray-100">
+                                    {typeof row[col] === 'number' ? row[col].toFixed(2) : row[col]}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   ) : (
                     <EmptyState type="table" />
@@ -1642,6 +1834,126 @@ function App() {
               </button>
             </div>
           </>
+        )}
+
+        {/* 合并预览对话框 */}
+        {showMergePreview && calculateMergedData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden border border-gray-200 dark:border-gray-700">
+              {/* 对话框标题 */}
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-fuchsia-50 to-pink-50 dark:from-fuchsia-900/20 dark:to-pink-900/20">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  <svg className="w-6 h-6 text-fuchsia-600 dark:text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  合并预览
+                </h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                  即将合并 {selectedRows.size} 行数据，以下是计算后的平均值
+                </p>
+              </div>
+
+              {/* 对话框内容 */}
+              <div className="p-6 overflow-y-auto max-h-[calc(80vh-180px)]">
+                <div className="space-y-4">
+                  {/* 选中的原始数据 */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                      <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+                      将被合并的数据行
+                    </h4>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                      <div className="space-y-1 text-xs">
+                        {Array.from(selectedRows).map(idx => {
+                          const row = comparisonsData.rows[idx];
+                          return (
+                            <div key={idx} className="flex items-center gap-2">
+                              <span className="font-mono text-blue-600 dark:text-blue-400">#{idx + 1}</span>
+                              <span className="text-gray-700 dark:text-gray-300">{row.source_file || '未命名'}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 合并后的数据预览 */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                      <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                      合并后的数据
+                    </h4>
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                      <div className="grid grid-cols-2 gap-3">
+                        {comparisonsData.columns.map(col => (
+                          <div key={col} className="bg-white dark:bg-gray-800 rounded-lg p-2.5 border border-gray-200 dark:border-gray-700">
+                            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                              {col}
+                            </div>
+                            <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                              {typeof calculateMergedData[col] === 'number' 
+                                ? calculateMergedData[col].toFixed(2) 
+                                : calculateMergedData[col]}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 提示信息 */}
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                    <div className="flex items-start gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                      <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <strong>操作提示：</strong>
+                        <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                          <li>数值列（avg、min、max、p50、p99）将计算平均值</li>
+                          <li>合并后原数据行将被删除</li>
+                          <li>comparisons.csv 文件将同步更新</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 对话框按钮 */}
+              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowMergePreview(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-all duration-200"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmMerge}
+                  disabled={isProcessing}
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-all duration-200 shadow-md flex items-center gap-2 ${
+                    isProcessing
+                      ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 hover:shadow-lg'
+                  }`}
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <span>处理中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>确认合并</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

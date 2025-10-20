@@ -207,7 +207,7 @@ async def process_file_endpoint(request: FileProcessRequest):
 async def get_comparisons_endpoint():
     """
     API endpoint to retrieve the comparisons.csv data.
-    Returns the last 6 rows (or all if less than 6).
+    Returns the last 10 rows for display (all_rows contains all data for trend chart).
     """
     try:
         comparison_csv_path = COMPARISONS_FILE  # 使用全局路径
@@ -224,15 +224,15 @@ async def get_comparisons_endpoint():
         
         df = pd.read_csv(comparison_csv_path, encoding='utf-8')
         
-        # 取最后6行或全部
-        last_n_rows = df.tail(6)
+        # 取最后10行用于显示（保存的数据没有限制）
+        last_n_rows = df.tail(10)
         
         return {
             "status": "success",
             "data": {
                 "rows": last_n_rows.to_dict('records'),
                 "columns": list(df.columns),
-                "all_rows": df.to_dict('records')  # 用于趋势图
+                "all_rows": df.to_dict('records')  # 用于趋势图，包含全部数据
             }
         }
     except Exception as e:
@@ -261,14 +261,15 @@ async def clear_comparisons_endpoint():
         raise HTTPException(status_code=500, detail=f"Failed to clear comparisons: {e}")
 
 
-class MergeRequest(BaseModel):
-    indices: list[int]  # 要合并的行索引列表
+class MergeRowsRequest(BaseModel):
+    row_indices: list[int]
+    merged_data: dict
 
 
-@app.post("/merge-comparisons")
-async def merge_comparisons_endpoint(request: MergeRequest):
+@app.post("/merge-rows")
+async def merge_rows_endpoint(request: MergeRowsRequest):
     """
-    API endpoint to merge multiple comparison rows by averaging their metrics.
+    API endpoint to merge multiple rows in comparisons.csv by averaging numeric columns.
     """
     try:
         comparison_csv_path = COMPARISONS_FILE
@@ -276,48 +277,44 @@ async def merge_comparisons_endpoint(request: MergeRequest):
         if not os.path.exists(comparison_csv_path):
             raise HTTPException(status_code=404, detail="Comparisons file not found")
         
-        df = pd.read_csv(comparison_csv_path, encoding='utf-8')
+        # 读取现有数据
+        df = pd.read_csv(comparison_csv_path)
         
-        # 验证索引
-        if not request.indices or len(request.indices) < 2:
+        if len(request.row_indices) < 2:
             raise HTTPException(status_code=400, detail="At least 2 rows required for merging")
         
-        if any(i < 0 or i >= len(df) for i in request.indices):
-            raise HTTPException(status_code=400, detail="Invalid row indices")
+        # 验证索引有效性
+        for idx in request.row_indices:
+            if idx < 0 or idx >= len(df):
+                raise HTTPException(status_code=400, detail=f"Invalid row index: {idx}")
         
-        # 获取要合并的行
-        rows_to_merge = df.iloc[request.indices]
+        # 创建合并后的新行（使用前端计算的数据）
+        merged_row = pd.DataFrame([request.merged_data])
         
-        # 计算平均值
-        merged_row = {
-            'timestamp': datetime.now().strftime("%m/%d %H:%M"),
-            'source_file': f"{rows_to_merge.iloc[0]['source_file']} (平均 x{len(request.indices)})",
-            'mean_ms': rows_to_merge['mean_ms'].mean(),
-            'p50_ms': rows_to_merge['p50_ms'].mean(),
-            'p90_ms': rows_to_merge['p90_ms'].mean(),
-            'p99_ms': rows_to_merge['p99_ms'].mean(),
-            'p999_ms': rows_to_merge['p999_ms'].mean()
-        }
+        # 删除被合并的行（从后往前删除，避免索引变化）
+        indices_to_delete = sorted(request.row_indices, reverse=True)
+        for idx in indices_to_delete:
+            df = df.drop(idx).reset_index(drop=True)
         
-        # 删除原始行并添加合并后的行
-        df = df.drop(request.indices)
-        df = pd.concat([df, pd.DataFrame([merged_row])], ignore_index=True)
+        # 添加合并后的行到末尾
+        df = pd.concat([df, merged_row], ignore_index=True)
         
-        # 保存回文件
+        # 保存更新后的CSV
         df.to_csv(comparison_csv_path, index=False, encoding='utf-8')
         
-        print(f"Merged {len(request.indices)} rows into 1 averaged row")
+        print(f"Merged {len(request.row_indices)} rows in comparisons.csv")
         
         return {
             "status": "success",
-            "message": f"Successfully merged {len(request.indices)} rows",
-            "merged_row": merged_row
+            "message": f"Successfully merged {len(request.row_indices)} rows",
+            "rows_merged": len(request.row_indices)
         }
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error merging comparisons: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to merge comparisons: {e}")
+        print(f"Error merging rows: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to merge rows: {e}")
+
 
 
 @app.get("/get-config")
