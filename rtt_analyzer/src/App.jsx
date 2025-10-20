@@ -59,6 +59,9 @@ function App() {
   const [selectedRows, setSelectedRows] = useState(new Set()); // 选中的行索引
   const [showMergePreview, setShowMergePreview] = useState(false); // 显示合并预览对话框
 
+  // 趋势图表图例显示状态
+  const [allTrendSeriesVisible, setAllTrendSeriesVisible] = useState(true); // 所有系列是否显示
+
   // Toast管理函数
   const addToast = useCallback((message, type = 'info', duration) => {
     const id = Date.now() + Math.random();
@@ -279,6 +282,34 @@ function App() {
       setIsProcessing(false);
     }
   }, [selectedRows, calculateMergedData, addToast]);
+
+  // 切换趋势图表所有系列的显示/隐藏
+  const toggleAllTrendSeries = useCallback(() => {
+    if (!trendChartRef.current) return;
+    
+    const chartInstance = trendChartRef.current.getEchartsInstance();
+    const seriesNames = ['Mean', 'P50', 'P90', 'P99', 'P99.9'];
+    
+    // 切换状态
+    const newState = !allTrendSeriesVisible;
+    setAllTrendSeriesVisible(newState);
+    
+    // 更新图例选中状态
+    seriesNames.forEach(name => {
+      chartInstance.dispatchAction({
+        type: newState ? 'legendSelect' : 'legendUnSelect',
+        name: name
+      });
+    });
+  }, [allTrendSeriesVisible]);
+
+  // 处理趋势图表图例点击事件
+  const handleTrendLegendChange = useCallback((params) => {
+    // 检查是否有任何系列被选中
+    const selected = params.selected;
+    const hasAnyVisible = Object.values(selected).some(v => v === true);
+    setAllTrendSeriesVisible(hasAnyVisible);
+  }, []);
 
   // 计算每列的最大值和最小值（仅针对数值列）
   const getColumnExtremes = useMemo(() => {
@@ -555,6 +586,19 @@ function App() {
       window.removeEventListener('saveChartImage', handleSaveChartEvent);
     };
   }, [handleManualSaveChart]);
+
+  // 监听工具栏全部显示/隐藏事件
+  useEffect(() => {
+    const handleToggleAllEvent = () => {
+      toggleAllTrendSeries();
+    };
+    
+    window.addEventListener('toggleAllTrendSeries', handleToggleAllEvent);
+    
+    return () => {
+      window.removeEventListener('toggleAllTrendSeries', handleToggleAllEvent);
+    };
+  }, [toggleAllTrendSeries]);
 
   // 当图表数据更新时自动保存
   useEffect(() => {
@@ -1174,6 +1218,20 @@ function App() {
               const event = new CustomEvent('saveChartImage');
               window.dispatchEvent(event);
             }
+          },
+          // 全部显示/隐藏按钮（根据状态显示不同图标）
+          myToggleAll: {
+            show: true,
+            title: allTrendSeriesVisible ? '全部隐藏' : '全部显示',
+            // 根据状态切换图标：完整眼睛 vs 划线眼睛
+            icon: allTrendSeriesVisible 
+              ? 'path://M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z'
+              : 'path://M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z',
+            onclick: function() {
+              // 触发全部显示/隐藏事件
+              const event = new CustomEvent('toggleAllTrendSeries');
+              window.dispatchEvent(event);
+            }
           }
         },
         iconStyle: {
@@ -1353,7 +1411,7 @@ function App() {
         containLabel: true
       }
     };
-  }, [comparisonsData, darkMode]);
+  }, [comparisonsData, darkMode, allTrendSeriesVisible]);
   
   // --- UI Rendering ---
   return (
@@ -1859,7 +1917,10 @@ function App() {
                         ref={trendChartRef}
                         option={trendChartOption} 
                         style={{ height: '384px' }} 
-                        theme={darkMode ? 'dark' : 'light'} 
+                        theme={darkMode ? 'dark' : 'light'}
+                        onEvents={{
+                          legendselectchanged: handleTrendLegendChange
+                        }}
                       />
                       <div className="mt-1 p-2 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
                         <p className="text-xs text-purple-700 dark:text-purple-400 flex items-start gap-2">
