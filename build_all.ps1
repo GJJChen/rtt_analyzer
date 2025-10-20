@@ -36,9 +36,9 @@ Write-Host '激活虚拟环境...' -ForegroundColor Green
 Write-Host '安装后端依赖...' -ForegroundColor Green
 pip install -q pyinstaller pandas numpy fastapi uvicorn pydantic
 
-# 打包后端
-Write-Host '使用 PyInstaller 打包后端...' -ForegroundColor Green
-pyinstaller --onefile --name rtt_analyzer_backend rtt_analyzer_backend.py --icon=favicon.ico --clean
+# 打包后端（使用 onedir 模式以提升启动速度）
+Write-Host '使用 PyInstaller 打包后端（onedir 模式）...' -ForegroundColor Green
+pyinstaller rtt_analyzer_backend.spec
 
 # 复制到 Tauri bin 目录
 $tauriBinDir = 'rtt_analyzer\src-tauri\bin'
@@ -47,7 +47,37 @@ if (-not (Test-Path $tauriBinDir)) {
 }
 
 Write-Host '复制到 Tauri bin 目录...' -ForegroundColor Green
-Copy-Item 'dist\rtt_analyzer_backend.exe' "$tauriBinDir\rtt_analyzer_backend-x86_64-pc-windows-msvc.exe" -Force
+
+# onedir 模式会生成一个目录，需要复制整个目录
+$backendDir = 'dist\rtt_analyzer_backend'
+if (Test-Path $backendDir) {
+    # 清理旧的文件和目录
+    if (Test-Path "$tauriBinDir\rtt_analyzer_backend") {
+        Remove-Item "$tauriBinDir\rtt_analyzer_backend" -Recurse -Force
+    }
+    if (Test-Path "$tauriBinDir\rtt_analyzer_backend-x86_64-pc-windows-msvc") {
+        Remove-Item "$tauriBinDir\rtt_analyzer_backend-x86_64-pc-windows-msvc" -Recurse -Force
+    }
+    if (Test-Path "$tauriBinDir\rtt_analyzer_backend-x86_64-pc-windows-msvc.exe") {
+        Remove-Item "$tauriBinDir\rtt_analyzer_backend-x86_64-pc-windows-msvc.exe" -Force
+    }
+    
+    # 复制并重命名目录为带架构后缀的名称（Tauri 要求）
+    Copy-Item $backendDir "$tauriBinDir\rtt_analyzer_backend-x86_64-pc-windows-msvc" -Recurse -Force
+    
+    # 重命名主执行文件以匹配 Tauri 的期望
+    $originalExe = "$tauriBinDir\rtt_analyzer_backend-x86_64-pc-windows-msvc\rtt_analyzer_backend.exe"
+    $renamedExe = "$tauriBinDir\rtt_analyzer_backend-x86_64-pc-windows-msvc\rtt_analyzer_backend-x86_64-pc-windows-msvc.exe"
+    if (Test-Path $originalExe) {
+        Move-Item $originalExe $renamedExe -Force
+        Write-Host '✓ Backend executable renamed to match Tauri requirements' -ForegroundColor Green
+    }
+    
+    Write-Host '✓ 后端目录已复制到' $tauriBinDir'\rtt_analyzer_backend-x86_64-pc-windows-msvc\' -ForegroundColor Green
+} else {
+    Write-Host '✗ 后端构建失败：未找到' $backendDir -ForegroundColor Red
+    exit 1
+}
 
 Write-Host '✓ 后端打包完成' -ForegroundColor Green
 Write-Host ''

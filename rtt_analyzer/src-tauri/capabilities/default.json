@@ -6,7 +6,6 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "opener:allow-open-path",
     "opener:allow-reveal-item-in-dir",
     "core:event:allow-listen",
     "core:event:allow-emit",
@@ -16,6 +15,14 @@
     "dialog:allow-save",
     {
       "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    },
+    {
+      "identifier": "opener:allow-open-path",
       "allow": [
         {
           "path": "**"

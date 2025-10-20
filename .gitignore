@@ -27,8 +27,19 @@ env/
 
 # PyInstaller
 *.manifest
-*.spec
+rtt_analyzer_backend.spec
 
+# 后端构建产物
+build/
+dist/
+*.exe
+rtt_analyzer_backend/
+
+# PyInstaller 生成的后端目录（所有位置）
+rtt_analyzer_backend-*/
+rtt_analyzer/src-tauri/bin/rtt_analyzer_backend-*/
+rtt_analyzer/src-tauri/target/debug/rtt_analyzer_backend-*/
+rtt_analyzer/src-tauri/target/release/rtt_analyzer_backend-*/
 # IDEs
 .vscode/
 .idea/
@@ -36,11 +47,6 @@ env/
 *.swo
 *~
 .DS_Store
-
-# 后端构建产物
-build/
-dist/
-*.exe
 
 # 分析结果文件夹（生成的输出）
 *_results/

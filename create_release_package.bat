@@ -32,16 +32,20 @@ if exist "%BUNDLE_DIR%\msi\rtt_analyzer_%VERSION%_x64_en-US.msi" (
 REM 复制后端文件
 echo [3/5] 准备后端文件...
 
-REM 选项 A：如果已经打包了后端 exe
-if exist "dist\rtt_analyzer_backend.exe" (
+REM 选项 A：如果已经打包了后端目录（onedir 模式）
+if exist "dist\rtt_analyzer_backend\" (
+    xcopy /E /I /Y "dist\rtt_analyzer_backend" "%RELEASE_DIR%\rtt_analyzer_backend\"
+    echo ✓ 后端目录已复制（onedir 模式）
+) else if exist "dist\rtt_analyzer_backend.exe" (
+    REM 兼容旧的 onefile 模式
     copy "dist\rtt_analyzer_backend.exe" "%RELEASE_DIR%\"
-    echo ✓ 后端可执行文件已复制
+    echo ✓ 后端可执行文件已复制（onefile 模式）
 ) else (
     REM 选项 B：复制 Python 脚本版本
     copy "rtt_analyzer_backend.py" "%RELEASE_DIR%\"
     echo ✓ 后端 Python 脚本已复制
     echo.
-    echo 💡 提示：如需打包后端为 exe，请运行 build_backend.bat
+    echo 💡 提示：如需打包后端，请运行 build_backend.bat
 )
 
 REM 复制启动脚本和文档

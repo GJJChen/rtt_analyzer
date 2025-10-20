@@ -53,16 +53,25 @@ Write-Host ""
 
 # 3. 检查后端程序
 Write-Host "[3/8] 检查后端程序..." -ForegroundColor Yellow
-$backendExe = Join-Path $rttAnalyzerDir "src-tauri\bin\rtt_analyzer_backend-x86_64-pc-windows-msvc.exe"
+$backendDir = Join-Path $rttAnalyzerDir "src-tauri\bin\rtt_analyzer_backend-x86_64-pc-windows-msvc"
+$backendExe = Join-Path $backendDir "rtt_analyzer_backend-x86_64-pc-windows-msvc.exe"
 
-if (-not (Test-Path $backendExe)) {
-    Write-Host "错误: 找不到后端程序: $backendExe" -ForegroundColor Red
-    Write-Host "请先运行 build_backend.bat 构建后端" -ForegroundColor Yellow
+# 兼容新的 onedir 模式和旧的 onefile 模式
+$legacyBackendExe = Join-Path $rttAnalyzerDir "src-tauri\bin\rtt_analyzer_backend-x86_64-pc-windows-msvc.exe"
+
+if (Test-Path $backendExe) {
+    # onedir 模式（新）
+    $backendSize = (Get-ChildItem -Path $backendDir -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+    Write-Host "✓ 后端程序（onedir）: $([math]::Round($backendSize, 2)) MB" -ForegroundColor Green
+} elseif (Test-Path $legacyBackendExe) {
+    # 旧的 onefile 模式
+    $backendSize = (Get-Item $legacyBackendExe).Length / 1MB
+    Write-Host "✓ 后端程序（onefile）: $([math]::Round($backendSize, 2)) MB" -ForegroundColor Green
+} else {
+    Write-Host "错误: 找不到后端程序" -ForegroundColor Red
+    Write-Host "请先运行 build_backend.bat 或 build_backend.ps1 构建后端" -ForegroundColor Yellow
     exit 1
 }
-
-$backendSize = (Get-Item $backendExe).Length / 1MB
-Write-Host "✓ 后端程序: $([math]::Round($backendSize, 2)) MB" -ForegroundColor Green
 Write-Host ""
 
 # 4. 清理旧的构建

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { File, UploadCloud, BarChart2, Table, BrainCircuit, Moon, Sun, AlertTriangle, FolderOpen, Trash2, ExternalLink, TrendingUp, TrendingDown, Download } from 'lucide-react';
+import { File, UploadCloud, BarChart2, Table, BrainCircuit, Moon, Sun, AlertTriangle, FolderOpen, Trash2, ExternalLink, TrendingUp, TrendingDown, Download, FolderSearch } from 'lucide-react';
 // Tauri v2 正确的导入方式
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -146,6 +146,36 @@ function App() {
     }
   }, [inputDir, outputBaseDir, saveConfig]);
 
+  // 打开输入目录
+  const openInputDir = useCallback(async () => {
+    try {
+      if (!inputDir) {
+        addToast('请先选择输入目录', 'warning');
+        return;
+      }
+      await openPath(inputDir);
+      console.log('Opening input directory:', inputDir);
+    } catch (error) {
+      console.error("Failed to open input directory:", error);
+      addToast('打开目录失败: ' + error.message, 'error');
+    }
+  }, [inputDir, addToast]);
+
+  // 打开输出根目录
+  const openOutputBaseDir = useCallback(async () => {
+    try {
+      if (!outputBaseDir) {
+        addToast('请先选择输出目录', 'warning');
+        return;
+      }
+      await openPath(outputBaseDir);
+      console.log('Opening output directory:', outputBaseDir);
+    } catch (error) {
+      console.error("Failed to open output directory:", error);
+      addToast('打开目录失败: ' + error.message, 'error');
+    }
+  }, [outputBaseDir, addToast]);
+
   // 清除历史记录
   const clearComparisons = useCallback(async () => {
     try {
@@ -225,12 +255,12 @@ function App() {
 
   // 等待后端就绪
   const waitForBackend = useCallback(async () => {
-    const maxAttempts = 30; // 最多等待 15 秒
+    const maxAttempts = 30; // 最多等待 12 秒
     
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const response = await fetch('http://127.0.0.1:8000/health', {
-          signal: AbortSignal.timeout(500)
+          signal: AbortSignal.timeout(400)
         });
         if (response.ok) {
           console.log('Backend is ready!');
@@ -241,7 +271,9 @@ function App() {
       } catch (error) {
         // 继续重试
       }
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // 前几次快速重试，后面放慢
+      const delay = i < 5 ? 200 : 400;
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
     
     console.warn('Backend failed to start in time');
@@ -1169,8 +1201,21 @@ function App() {
                   <button
                     onClick={selectInputDir}
                     className="px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg transition-all duration-200 hover:from-blue-700 hover:to-blue-600 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                    title="选择文件夹"
                   >
                     <FolderOpen size={16} />
+                  </button>
+                  <button
+                    onClick={openInputDir}
+                    disabled={!inputDir}
+                    className={`px-3 py-2 rounded-lg transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 ${
+                      inputDir 
+                        ? 'bg-gradient-to-r from-pink-600 to-fuchsia-500 text-white hover:from-pink-700 hover:to-fuchsia-600 hover:shadow-lg focus:ring-pink-500/60' 
+                        : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-500 cursor-not-allowed'
+                    }`}
+                    title="打开当前文件夹"
+                  >
+                    <FolderSearch size={16} />
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
@@ -1196,8 +1241,21 @@ function App() {
                   <button
                     onClick={selectOutputBaseDir}
                     className="px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg transition-all duration-200 hover:from-blue-700 hover:to-blue-600 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                    title="选择文件夹"
                   >
                     <FolderOpen size={16} />
+                  </button>
+                  <button
+                    onClick={openOutputBaseDir}
+                    disabled={!outputBaseDir}
+                    className={`px-3 py-2 rounded-lg transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 ${
+                      outputBaseDir 
+                        ? 'bg-gradient-to-r from-pink-600 to-fuchsia-500 text-white hover:from-pink-700 hover:to-fuchsia-600 hover:shadow-lg focus:ring-pink-500/60' 
+                        : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-500 cursor-not-allowed'
+                    }`}
+                    title="打开当前文件夹"
+                  >
+                    <FolderSearch size={16} />
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
