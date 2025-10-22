@@ -6,7 +6,13 @@ export default {
   ],
   darkMode: 'class', // 启用基于 class 的暗色模式
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        // 黑金主题主色
+        primary: '#C79B45',
+        gold: '#C79B45',
+      },
+    },
   },
   plugins: [],
 }

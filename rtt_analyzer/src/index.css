@@ -82,3 +82,34 @@
 .glass-card {
 	@apply bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl border border-white/20 dark:border-gray-700/50;
 }
+
+/* ===== Black-gold theme tokens ===== */
+:root.theme-blackgold {
+	/* Primary accent */
+	--gold: #C79B45;
+	--gold-weak: rgba(199, 155, 69, 0.6);
+	--gold-weaker: rgba(199, 155, 69, 0.35);
+	--gold-strong: rgba(199, 155, 69, 0.9);
+
+	/* Surfaces */
+	--bg-0: #000000;
+	--bg-1: #0b0b0b;
+	--bg-2: #111111;
+	--border: rgba(199, 155, 69, 0.2);
+	--text: rgba(199, 155, 69, 0.85);
+	--muted: rgba(199, 155, 69, 0.55);
+}
+
+/* Generic helpers for black-gold without changing components one-by-one */
+.theme-blackgold .text-primary { color: var(--gold); }
+.theme-blackgold .border-primary { border-color: var(--gold); }
+.theme-blackgold .bg-primary { background-color: var(--gold); }
+
+/* Scrollbar tint for black-gold */
+.theme-blackgold ::-webkit-scrollbar-thumb {
+	background: var(--gold-weaker);
+	border-radius: 8px;
+}
+.theme-blackgold ::-webkit-scrollbar-track {
+	background: #0b0b0b;
+}

@@ -128,32 +128,68 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
         comparison_data = None
         if file_exists:
             try:
-                df_comparison = pd.read_csv(comparison_csv_path, encoding='utf-8')
-                if len(df_comparison) > 0:
+                df_comparison = pd.read_csv(comparison_csv_path, encoding='utf-8', na_values=['', ' '], keep_default_na=True)
+                # 过滤空行
+                df_comparison = df_comparison.dropna(how='all')
+                
+                # 检查是否有有效数据行（不仅仅是列名）
+                if len(df_comparison) > 0 and not df_comparison.empty:
                     last_row = df_comparison.iloc[-1]
+                    
+                    def safe_change_percent(current, previous):
+                        """安全计算百分比变化，避免NaN和Inf"""
+                        if pd.isna(previous) or pd.isna(current) or previous == 0:
+                            return 0.0
+                        change = ((current - previous) / previous * 100)
+                        if np.isnan(change) or np.isinf(change):
+                            return 0.0
+                        return change
+                    
                     comparison_data = {
-                        "mean_ms": {"value": last_row['mean_ms'], "change": ((stats['mean_ms'] - last_row['mean_ms']) / last_row['mean_ms'] * 100)},
-                        "p50_ms": {"value": last_row['p50_ms'], "change": ((stats['p50_ms'] - last_row['p50_ms']) / last_row['p50_ms'] * 100)},
-                        "p90_ms": {"value": last_row['p90_ms'], "change": ((stats['p90_ms'] - last_row['p90_ms']) / last_row['p90_ms'] * 100)},
-                        "p99_ms": {"value": last_row['p99_ms'], "change": ((stats['p99_ms'] - last_row['p99_ms']) / last_row['p99_ms'] * 100)},
-                        "p999_ms": {"value": last_row['p999_ms'], "change": ((stats['p999_ms'] - last_row['p999_ms']) / last_row['p999_ms'] * 100)},
+                        "mean_ms": {"value": float(last_row['mean_ms']) if pd.notna(last_row['mean_ms']) else 0.0, "change": safe_change_percent(stats['mean_ms'], last_row['mean_ms'])},
+                        "p50_ms": {"value": float(last_row['p50_ms']) if pd.notna(last_row['p50_ms']) else 0.0, "change": safe_change_percent(stats['p50_ms'], last_row['p50_ms'])},
+                        "p90_ms": {"value": float(last_row['p90_ms']) if pd.notna(last_row['p90_ms']) else 0.0, "change": safe_change_percent(stats['p90_ms'], last_row['p90_ms'])},
+                        "p99_ms": {"value": float(last_row['p99_ms']) if pd.notna(last_row['p99_ms']) else 0.0, "change": safe_change_percent(stats['p99_ms'], last_row['p99_ms'])},
+                        "p999_ms": {"value": float(last_row['p999_ms']) if pd.notna(last_row['p999_ms']) else 0.0, "change": safe_change_percent(stats['p999_ms'], last_row['p999_ms'])},
                     }
             except Exception as e:
                 print(f"Warning: Could not read comparison data: {e}")
 
-        with open(comparison_csv_path, "a", encoding='utf-8', newline='') as f:
-            if not file_exists:
-                f.write(header)
-            data_row = (
-                f"{timestamp},"
-                f"{base_name},"
-                f"{stats['mean_ms']:.2f},"
-                f"{stats['p50_ms']:.2f},"
-                f"{stats['p90_ms']:.2f},"
-                f"{stats['p99_ms']:.2f},"
-                f"{stats['p999_ms']:.2f}\n"
-            )
-            f.write(data_row)
+        # 使用pandas写入CSV，避免手动管理表头和追加模式的问题
+        new_row_df = pd.DataFrame([{
+            'timestamp': timestamp,
+            'source_file': base_name,
+            'mean_ms': round(stats['mean_ms'], 2),
+            'p50_ms': round(stats['p50_ms'], 2),
+            'p90_ms': round(stats['p90_ms'], 2),
+            'p99_ms': round(stats['p99_ms'], 2),
+            'p999_ms': round(stats['p999_ms'], 2)
+        }])
+        
+        if file_exists:
+            # 读取现有数据并追加新行
+            try:
+                existing_df = pd.read_csv(comparison_csv_path, encoding='utf-8', na_values=['', ' '], keep_default_na=True)
+                
+                # 过滤掉完全空的行和所有数据列都为空的行
+                existing_df = existing_df.dropna(how='all')
+                # 进一步过滤：如果数据列（mean_ms等）全为空，也删除
+                data_columns = ['mean_ms', 'p50_ms', 'p90_ms', 'p99_ms', 'p999_ms']
+                existing_df = existing_df.dropna(subset=data_columns, how='all')
+                
+                if len(existing_df) > 0:
+                    updated_df = pd.concat([existing_df, new_row_df], ignore_index=True)
+                else:
+                    updated_df = new_row_df
+            except (pd.errors.EmptyDataError, Exception) as e:
+                # 文件存在但为空、只有表头或读取失败
+                print(f"Warning: Could not read existing comparison data: {e}")
+                updated_df = new_row_df
+        else:
+            updated_df = new_row_df
+        
+        # 写入更新后的数据
+        updated_df.to_csv(comparison_csv_path, index=False, encoding='utf-8')
 
         # --- 6. Prepare Chart Data for Frontend ---
         rtt = valid_sorted.to_numpy()
@@ -222,7 +258,30 @@ async def get_comparisons_endpoint():
                 }
             }
         
-        df = pd.read_csv(comparison_csv_path, encoding='utf-8')
+        # 读取CSV时，将空字符串自动转换为NaN
+        df = pd.read_csv(comparison_csv_path, encoding='utf-8', na_values=['', ' '], keep_default_na=True)
+        
+        # 过滤掉完全空的行
+        df = df.dropna(how='all')
+        
+        # 过滤掉数据列全为空的行
+        data_columns = ['mean_ms', 'p50_ms', 'p90_ms', 'p99_ms', 'p999_ms']
+        if all(col in df.columns for col in data_columns):
+            df = df.dropna(subset=data_columns, how='all')
+        
+        # 如果数据为空（只有列标题），返回空数据
+        if df.empty:
+            return {
+                "status": "success",
+                "data": {
+                    "rows": [],
+                    "columns": list(df.columns),
+                    "all_rows": []
+                }
+            }
+        
+        # 将NaN值替换为None（可以被JSON序列化）
+        df = df.replace({np.nan: None, np.inf: None, -np.inf: None})
         
         # 取最后10行用于显示（保存的数据没有限制）
         last_n_rows = df.tail(10)
@@ -315,6 +374,53 @@ async def merge_rows_endpoint(request: MergeRowsRequest):
         print(f"Error merging rows: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to merge rows: {e}")
 
+
+class DeleteRowsRequest(BaseModel):
+    row_indices: list[int]
+
+
+@app.delete("/delete-rows")
+async def delete_rows_endpoint(request: DeleteRowsRequest):
+    """
+    API endpoint to delete selected rows from comparisons.csv.
+    """
+    try:
+        comparison_csv_path = COMPARISONS_FILE
+        
+        if not os.path.exists(comparison_csv_path):
+            raise HTTPException(status_code=404, detail="Comparisons file not found")
+        
+        # 读取现有数据
+        df = pd.read_csv(comparison_csv_path)
+        
+        if len(request.row_indices) == 0:
+            raise HTTPException(status_code=400, detail="At least 1 row required for deletion")
+        
+        # 验证索引有效性
+        for idx in request.row_indices:
+            if idx < 0 or idx >= len(df):
+                raise HTTPException(status_code=400, detail=f"Invalid row index: {idx}")
+        
+        # 删除选中的行（从后往前删除，避免索引变化）
+        indices_to_delete = sorted(request.row_indices, reverse=True)
+        for idx in indices_to_delete:
+            df = df.drop(idx).reset_index(drop=True)
+        
+        # 保存更新后的CSV
+        df.to_csv(comparison_csv_path, index=False, encoding='utf-8')
+        
+        print(f"Deleted {len(request.row_indices)} rows from comparisons.csv")
+        
+        return {
+            "status": "success",
+            "message": f"Successfully deleted {len(request.row_indices)} rows",
+            "rows_deleted": len(request.row_indices)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting rows: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete rows: {e}")
 
 
 @app.get("/get-config")
