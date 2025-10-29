@@ -497,12 +497,14 @@ function App() {
   // 限制 source_file 名称长度（最大 "sample_rtt0102 - 副本 (3)平均" 的长度）
   const formatSourceFileName = useCallback((fileName) => {
     if (!fileName) return '';
+    // 确保 fileName 是字符串
+    const name = String(fileName);
     const maxLength = 30; // "sample_rtt0102 - 副本 (3)平均" 约 30 字符
-    if (fileName.length <= maxLength) {
-      return fileName;
+    if (name.length <= maxLength) {
+      return name;
     }
     // 截断并添加省略号
-    return fileName.substring(0, maxLength - 3) + '...';
+    return name.substring(0, maxLength - 3) + '...';
   }, []);
 
 
@@ -633,6 +635,48 @@ function App() {
     }
   }, [analysisResult, darkMode, theme, addToast]);
 
+  // 为特定分析结果生成并保存图表（用于多文件处理）
+  const saveChartForResult = useCallback(async (resultData) => {
+    if (!resultData || !resultData.chart_data || !chartRef.current) return;
+    
+    try {
+      // 短暂等待，确保 UI 已经更新并渲染了新的图表
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      const echartsInstance = chartRef.current.getEchartsInstance();
+      if (!echartsInstance) {
+        console.warn('ECharts instance not available for saveChartForResult');
+        return;
+      }
+      
+      const imageData = echartsInstance.getDataURL({
+        type: 'png',
+        pixelRatio: 2,
+        backgroundColor: theme === 'blackgold' ? '#000000' : (darkMode ? '#1f2937' : '#ffffff'),
+        excludeComponents: ['toolbox', 'dataZoom']
+      });
+      
+      // 将 base64 转换为字节数组
+      const base64Data = imageData.split(',')[1];
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // 保存到结果文件夹
+      const baseName = resultData.base_name || 'rtt_analysis';
+      const filePath = `${resultData.output_dir}\\${baseName}_cdf.png`;
+      
+      await writeFile(filePath, bytes);
+      console.log(`✓ Chart saved for ${baseName} to: ${filePath}`);
+      
+    } catch (error) {
+      console.error(`Failed to save chart for ${resultData.base_name}:`, error);
+      // 不显示错误提示，避免多个文件时弹出太多提示
+    }
+  }, [darkMode, theme, chartRef]);
+
   // 手动保存图表（用户点击按钮触发）
   const handleManualSaveChart = useCallback(async () => {
     // 根据当前激活的标签页选择对应的图表引用
@@ -746,10 +790,12 @@ function App() {
     
     // 自动提取并保存输入目录（从第一个文件）
     if (paths.length > 0 && !inputDir) {
-      const firstFilePath = paths[0];
-      const directory = firstFilePath.substring(0, firstFilePath.lastIndexOf('\\'));
-      setInputDir(directory);
-      await saveConfig(directory, outputBaseDir);
+      const firstFilePath = String(paths[0] || '');
+      if (firstFilePath) {
+        const directory = firstFilePath.substring(0, firstFilePath.lastIndexOf('\\'));
+        setInputDir(directory);
+        await saveConfig(directory, outputBaseDir);
+      }
     }
     
     const newFiles = paths.map(filePath => ({
@@ -791,6 +837,9 @@ function App() {
         setAnalysisResult(result.data);
         addToast(`成功分析文件: ${file.name}`, 'success');
         
+        // 立即为当前文件保存图表
+        await saveChartForResult(result.data);
+        
         // 刷新 comparisons 数据
         await fetchComparisons();
 
@@ -807,7 +856,7 @@ function App() {
     }
     
     setIsProcessing(false);
-  }, [fetchComparisons, inputDir, outputBaseDir, saveConfig, backendStatus, addToast]);
+  }, [fetchComparisons, inputDir, outputBaseDir, saveConfig, backendStatus, addToast, saveChartForResult]);
 
   // 使用 ref 保存最新的 handleFileDrop 函数
   useEffect(() => {
@@ -1301,7 +1350,8 @@ function App() {
     
     // 智能处理文件名显示
     const xData = allRows.map(row => {
-      let fileName = row.source_file || '未命名';
+      // 确保 fileName 始终是字符串
+      let fileName = String(row.source_file || '未命名');
       
       // 去掉 .csv 扩展名（如果有）
       if (fileName.endsWith('.csv')) {
@@ -1338,7 +1388,8 @@ function App() {
         extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);',
         // 在 tooltip 中显示完整文件名
         formatter: function(params) {
-          let result = `<div style="font-weight: bold; margin-bottom: 4px;">${allRows[params[0].dataIndex].source_file || '未命名'}</div>`;
+          const sourceFile = String(allRows[params[0].dataIndex].source_file || '未命名');
+          let result = `<div style="font-weight: bold; margin-bottom: 4px;">${sourceFile}</div>`;
           params.forEach(param => {
             result += `<div style="display: flex; align-items: center; gap: 8px;">
               <span style="display: inline-block; width: 10px; height: 10px; background-color: ${param.color}; border-radius: 50%;"></span>

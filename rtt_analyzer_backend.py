@@ -128,7 +128,13 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
         comparison_data = None
         if file_exists:
             try:
-                df_comparison = pd.read_csv(comparison_csv_path, encoding='utf-8', na_values=['', ' '], keep_default_na=True)
+                df_comparison = pd.read_csv(
+                    comparison_csv_path, 
+                    encoding='utf-8', 
+                    na_values=['', ' '], 
+                    keep_default_na=True,
+                    dtype={'source_file': str}
+                )
                 # 过滤空行
                 df_comparison = df_comparison.dropna(how='all')
                 
@@ -169,7 +175,13 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
         if file_exists:
             # 读取现有数据并追加新行
             try:
-                existing_df = pd.read_csv(comparison_csv_path, encoding='utf-8', na_values=['', ' '], keep_default_na=True)
+                existing_df = pd.read_csv(
+                    comparison_csv_path, 
+                    encoding='utf-8', 
+                    na_values=['', ' '], 
+                    keep_default_na=True,
+                    dtype={'source_file': str}
+                )
                 
                 # 过滤掉完全空的行和所有数据列都为空的行
                 existing_df = existing_df.dropna(how='all')
@@ -259,7 +271,14 @@ async def get_comparisons_endpoint():
             }
         
         # 读取CSV时，将空字符串自动转换为NaN
-        df = pd.read_csv(comparison_csv_path, encoding='utf-8', na_values=['', ' '], keep_default_na=True)
+        # 指定 source_file 列为字符串类型，防止纯数字文件名被转换为数值
+        df = pd.read_csv(
+            comparison_csv_path, 
+            encoding='utf-8', 
+            na_values=['', ' '], 
+            keep_default_na=True,
+            dtype={'source_file': str}
+        )
         
         # 过滤掉完全空的行
         df = df.dropna(how='all')
@@ -336,8 +355,8 @@ async def merge_rows_endpoint(request: MergeRowsRequest):
         if not os.path.exists(comparison_csv_path):
             raise HTTPException(status_code=404, detail="Comparisons file not found")
         
-        # 读取现有数据
-        df = pd.read_csv(comparison_csv_path)
+        # 读取现有数据，指定 source_file 为字符串类型
+        df = pd.read_csv(comparison_csv_path, dtype={'source_file': str})
         
         if len(request.row_indices) < 2:
             raise HTTPException(status_code=400, detail="At least 2 rows required for merging")
@@ -390,8 +409,8 @@ async def delete_rows_endpoint(request: DeleteRowsRequest):
         if not os.path.exists(comparison_csv_path):
             raise HTTPException(status_code=404, detail="Comparisons file not found")
         
-        # 读取现有数据
-        df = pd.read_csv(comparison_csv_path)
+        # 读取现有数据，指定 source_file 为字符串类型
+        df = pd.read_csv(comparison_csv_path, dtype={'source_file': str})
         
         if len(request.row_indices) == 0:
             raise HTTPException(status_code=400, detail="At least 1 row required for deletion")
