@@ -286,7 +286,7 @@ function App() {
     if (!comparisonsData || selectedRows.size === 0) return null;
 
     const selectedRowsData = Array.from(selectedRows).map(idx => comparisonsData.rows[idx]);
-    const numericColumns = ['mean_ms', 'p50_ms', 'p90_ms', 'p99_ms', 'p999_ms'];
+    const numericColumns = ['mean_ms', 'p90_ms', 'p99_ms', 'p999_ms', 'p9999_ms'];
     
     const merged = {};
     comparisonsData.columns.forEach(col => {
@@ -418,7 +418,7 @@ function App() {
     if (!trendChartRef.current) return;
     
     const chartInstance = trendChartRef.current.getEchartsInstance();
-    const seriesNames = ['Mean', 'P50', 'P90', 'P99', 'P99.9'];
+    const seriesNames = ['Mean', 'P90', 'P99', 'P99.9', 'P99.99'];
     
     // 切换状态
     const newState = !allTrendSeriesVisible;
@@ -447,7 +447,7 @@ function App() {
       return {};
     }
 
-    const numericColumns = ['mean_ms', 'p50_ms', 'p90_ms', 'p99_ms', 'p999_ms'];
+    const numericColumns = ['mean_ms', 'p90_ms', 'p99_ms', 'p999_ms', 'p9999_ms'];
     const extremes = {};
 
     numericColumns.forEach(col => {
@@ -962,27 +962,28 @@ function App() {
       if (unlisten) unlisten();
     };
   }, []); // 空依赖数组，避免重复注册监听器
+  
   // --- Chart Options ---
   const chartOption = useMemo(() => {
     if (!analysisResult || !analysisResult.chart_data) return {};
     const stats = analysisResult.stats;
-    const { x, y } = analysisResult.chart_data;
+    const { x, y, x_max } = analysisResult.chart_data;
     const gold = '#C79B45';
     const goldStrong = 'rgba(199,155,69,0.9)';
     const goldMid = 'rgba(199,155,69,0.7)';
     const goldWeak = 'rgba(199,155,69,0.5)';
     
-    // 计算 X 轴的合理范围：取 P99.9 或最大值的 1.1 倍
-    const maxRTT = Math.max(...x);
-    const xAxisMax = Math.min(stats.p999_ms * 1.2, maxRTT);
+    // 计算 X 轴的合理范围：取 P99.99 或最大值的 1.1 倍
+    // 使用后端计算好的 x_max，避免前端循环计算
+    const xAxisMax = Math.min(stats.p9999_ms * 1.2, x_max);
 
     // 为5条统计线分配标签位置（上方/下方交替），根据值的大小排序
     const statLines = [
       { name: 'Mean', value: stats.mean_ms, color: '#10b981' },
-      { name: 'P50', value: stats.p50_ms, color: '#f59e0b' },
-      { name: 'P90', value: stats.p90_ms, color: '#ef4444' },
-      { name: 'P99', value: stats.p99_ms, color: '#8b5cf6' },
-      { name: 'P99.9', value: stats.p999_ms, color: '#ec4899' }
+      { name: 'P90', value: stats.p90_ms, color: '#f59e0b' },
+      { name: 'P99', value: stats.p99_ms, color: '#ef4444' },
+      { name: 'P99.9', value: stats.p999_ms, color: '#8b5cf6' },
+      { name: 'P99.99', value: stats.p9999_ms, color: '#ec4899' }
     ];
     
     // 按值从小到大排序
@@ -1022,7 +1023,7 @@ function App() {
       },
       // 添加图例 - 两行显示
       legend: {
-        data: ['CDF 曲线', 'Mean', 'P50', 'P90', 'P99', 'P99.9'],
+        data: ['CDF 曲线', 'Mean', 'P90', 'P99', 'P99.9', 'P99.99'],
         textStyle: { color: theme === 'blackgold' ? gold : (darkMode ? '#ccc' : '#333'), fontSize: 12 },
         top: 0,
         left: 'center',
@@ -1032,10 +1033,10 @@ function App() {
         selected: {
           'CDF 曲线': true,
           'Mean': true,
-          'P50': true,
           'P90': true,
           'P99': true,
-          'P99.9': true
+          'P99.9': true,
+          'P99.99': true
         }
       },
       // 添加工具箱，包含缩放、还原、保存等功能
@@ -1202,38 +1203,6 @@ function App() {
             data: [{ coord: [stats.mean_ms, labelPositions['Mean']] }]
           }
         },
-        // P50 线
-        {
-          name: 'P50',
-          type: 'line',
-          data: [[stats.p50_ms, 0], [stats.p50_ms, 1]],
-          showSymbol: false,
-          lineStyle: {
-            type: 'dashed',
-            width: 2,
-            color: theme === 'blackgold' ? goldMid : '#f59e0b'
-          },
-          itemStyle: {
-            color: theme === 'blackgold' ? goldMid : '#f59e0b'
-          },
-          markPoint: {
-            symbol: 'rect',
-            symbolSize: [1, 1],
-            label: {
-              show: true,
-              formatter: `P50\n${stats.p50_ms.toFixed(2)}ms`,
-              fontSize: 11,
-              color: theme === 'blackgold' ? gold : (darkMode ? '#000' : '#000'),
-              fontWeight: 'bold',
-              backgroundColor: theme === 'blackgold' ? 'rgba(0,0,0,0.9)' : 'rgba(255, 255, 255, 0.9)',
-              padding: [3, 6],
-              borderRadius: 3,
-              borderColor: theme === 'blackgold' ? gold : undefined,
-              borderWidth: theme === 'blackgold' ? 1 : 0
-            },
-            data: [{ coord: [stats.p50_ms, labelPositions['P50']] }]
-          }
-        },
         // P90 线
         {
           name: 'P90',
@@ -1243,10 +1212,10 @@ function App() {
           lineStyle: {
             type: 'dashed',
             width: 2,
-            color: theme === 'blackgold' ? goldWeak : '#ef4444'
+            color: theme === 'blackgold' ? goldMid : '#f59e0b'
           },
           itemStyle: {
-            color: theme === 'blackgold' ? goldWeak : '#ef4444'
+            color: theme === 'blackgold' ? goldMid : '#f59e0b'
           },
           markPoint: {
             symbol: 'rect',
@@ -1329,11 +1298,43 @@ function App() {
             },
             data: [{ coord: [stats.p999_ms, labelPositions['P99.9']] }]
           }
+        },
+        // P99.99 线
+        {
+          name: 'P99.99',
+          type: 'line',
+          data: [[stats.p9999_ms, 0], [stats.p9999_ms, 1]],
+          showSymbol: false,
+          lineStyle: {
+            type: 'dashed',
+            width: 2,
+            color: theme === 'blackgold' ? 'rgba(199,155,69,0.3)' : '#dc2626'
+          },
+          itemStyle: {
+            color: theme === 'blackgold' ? 'rgba(199,155,69,0.3)' : '#dc2626'
+          },
+          markPoint: {
+            symbol: 'rect',
+            symbolSize: [1, 1],
+            label: {
+              show: true,
+              formatter: `P99.99\n${stats.p9999_ms.toFixed(2)}ms`,
+              fontSize: 11,
+              color: theme === 'blackgold' ? gold : (darkMode ? '#000' : '#000'),
+              fontWeight: 'bold',
+              backgroundColor: theme === 'blackgold' ? 'rgba(0,0,0,0.9)' : 'rgba(255, 255, 255, 0.9)',
+              padding: [3, 6],
+              borderRadius: 3,
+              borderColor: theme === 'blackgold' ? gold : undefined,
+              borderWidth: theme === 'blackgold' ? 1 : 0
+            },
+            data: [{ coord: [stats.p9999_ms, labelPositions['P99.99']] }]
+          }
         }
       ],
       grid: {
         left: '5%',
-        right: '3%',
+        right: '8%',
         bottom: '10%', // 进一步减少底部空间，滑动条更靠近图表
         top: '8%', // 进一步减少顶部空间，图例更靠近图表
         containLabel: true,
@@ -1496,7 +1497,7 @@ function App() {
         }
       ],
       legend: {
-        data: ['Mean', 'P50', 'P90', 'P99', 'P99.9'],
+        data: ['Mean', 'P90', 'P99', 'P99.9', 'P99.99'],
         textStyle: { color: theme === 'blackgold' ? gold : (darkMode ? '#ccc' : '#333') },
         top: 5
       },
@@ -1548,9 +1549,9 @@ function App() {
           }
         },
         {
-          name: 'P50',
+          name: 'P90',
           type: 'line',
-          data: allRows.map(row => row.p50_ms),
+          data: allRows.map(row => row.p90_ms),
           smooth: true,
           lineStyle: { color: theme === 'blackgold' ? 'rgba(199,155,69,0.75)' : '#f59e0b', width: 2 },
           itemStyle: { color: theme === 'blackgold' ? gold : '#f59e0b' },
@@ -1558,22 +1559,6 @@ function App() {
             show: true,
             formatter: '{a}',
             color: theme === 'blackgold' ? gold : '#f59e0b',
-            fontSize: 12,
-            fontWeight: 'bold',
-            distance: 10
-          }
-        },
-        {
-          name: 'P90',
-          type: 'line',
-          data: allRows.map(row => row.p90_ms),
-          smooth: true,
-          lineStyle: { color: theme === 'blackgold' ? 'rgba(199,155,69,0.65)' : '#ef4444', width: 2 },
-          itemStyle: { color: theme === 'blackgold' ? gold : '#ef4444' },
-          endLabel: {
-            show: true,
-            formatter: '{a}',
-            color: theme === 'blackgold' ? gold : '#ef4444',
             fontSize: 12,
             fontWeight: 'bold',
             distance: 10
@@ -1606,6 +1591,22 @@ function App() {
             show: true,
             formatter: '{a}',
             color: theme === 'blackgold' ? gold : '#ec4899',
+            fontSize: 12,
+            fontWeight: 'bold',
+            distance: 10
+          }
+        },
+        {
+          name: 'P99.99',
+          type: 'line',
+          data: allRows.map(row => row.p9999_ms),
+          smooth: true,
+          lineStyle: { color: theme === 'blackgold' ? 'rgba(199,155,69,0.3)' : '#dc2626', width: 2 },
+          itemStyle: { color: theme === 'blackgold' ? gold : '#dc2626' },
+          endLabel: {
+            show: true,
+            formatter: '{a}',
+            color: theme === 'blackgold' ? gold : '#dc2626',
             fontSize: 12,
             fontWeight: 'bold',
             distance: 10
@@ -2104,7 +2105,9 @@ function App() {
                         ref={chartRef}
                         option={chartOption} 
                         style={{ height: '384px' }} 
-                        theme={darkMode ? 'dark' : 'light'} 
+                        theme={darkMode ? 'dark' : 'light'}
+                        notMerge={true}
+                        lazyUpdate={true}
                       />
                       <div className={`mt-1 p-2 border rounded-lg ${
                         theme === 'blackgold'
@@ -2441,6 +2444,8 @@ function App() {
                         option={trendChartOption} 
                         style={{ height: '384px' }} 
                         theme={darkMode ? 'dark' : 'light'}
+                        notMerge={true}
+                        lazyUpdate={true}
                         onEvents={{
                           legendselectchanged: handleTrendLegendChange
                         }}
@@ -2686,7 +2691,7 @@ function App() {
                       <div>
                         <strong>操作提示：</strong>
                         <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                          <li>数值列（avg、min、max、p50、p99）将计算平均值</li>
+                          <li>数值列（avg、min、max、p90、p99、p999、p9999）将计算平均值</li>
                           <li>合并后原数据行将被删除</li>
                           <li>comparisons.csv 文件将同步更新</li>
                         </ul>

@@ -98,11 +98,6 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
         df = pd.read_csv(file_path, encoding='utf-8', usecols=['RTT'])
         valid = df["RTT"].dropna() * 1e3
 
-        # --- 3. Copy Original File (keep the original) ---
-        dest_path = os.path.join(output_dir, os.path.basename(file_path))
-        if not os.path.exists(dest_path):
-            shutil.copy2(file_path, dest_path)
-
         if valid.empty:
             raise ValueError(f"File '{os.path.basename(file_path)}' contains no valid RTT data.")
 
@@ -111,17 +106,17 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
         # --- 4. Calculate Statistics ---
         stats = {
             "mean_ms": np.mean(valid_sorted),
-            "p50_ms": np.percentile(valid_sorted, 50),
             "p90_ms": np.percentile(valid_sorted, 90),
             "p99_ms": np.percentile(valid_sorted, 99),
             "p999_ms": np.percentile(valid_sorted, 99.9),
+            "p9999_ms": np.percentile(valid_sorted, 99.99),
             "samples_ok": len(valid_sorted),
         }
 
         # --- 5. Save to comparisons.csv ---
         comparison_csv_path = COMPARISONS_FILE  # 使用全局路径
         timestamp = datetime.now().strftime("%m/%d %H:%M")
-        header = "timestamp,source_file,mean_ms,p50_ms,p90_ms,p99_ms,p999_ms\n"
+        header = "timestamp,source_file,mean_ms,p90_ms,p99_ms,p999_ms,p9999_ms\n"
         file_exists = os.path.exists(comparison_csv_path)
 
         # 读取上一次的数据用于对比
@@ -153,10 +148,10 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
                     
                     comparison_data = {
                         "mean_ms": {"value": float(last_row['mean_ms']) if pd.notna(last_row['mean_ms']) else 0.0, "change": safe_change_percent(stats['mean_ms'], last_row['mean_ms'])},
-                        "p50_ms": {"value": float(last_row['p50_ms']) if pd.notna(last_row['p50_ms']) else 0.0, "change": safe_change_percent(stats['p50_ms'], last_row['p50_ms'])},
                         "p90_ms": {"value": float(last_row['p90_ms']) if pd.notna(last_row['p90_ms']) else 0.0, "change": safe_change_percent(stats['p90_ms'], last_row['p90_ms'])},
                         "p99_ms": {"value": float(last_row['p99_ms']) if pd.notna(last_row['p99_ms']) else 0.0, "change": safe_change_percent(stats['p99_ms'], last_row['p99_ms'])},
                         "p999_ms": {"value": float(last_row['p999_ms']) if pd.notna(last_row['p999_ms']) else 0.0, "change": safe_change_percent(stats['p999_ms'], last_row['p999_ms'])},
+                        "p9999_ms": {"value": float(last_row['p9999_ms']) if pd.notna(last_row['p9999_ms']) else 0.0, "change": safe_change_percent(stats['p9999_ms'], last_row['p9999_ms'])},
                     }
             except Exception as e:
                 print(f"Warning: Could not read comparison data: {e}")
@@ -166,10 +161,10 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
             'timestamp': timestamp,
             'source_file': base_name,
             'mean_ms': round(stats['mean_ms'], 2),
-            'p50_ms': round(stats['p50_ms'], 2),
             'p90_ms': round(stats['p90_ms'], 2),
             'p99_ms': round(stats['p99_ms'], 2),
-            'p999_ms': round(stats['p999_ms'], 2)
+            'p999_ms': round(stats['p999_ms'], 2),
+            'p9999_ms': round(stats['p9999_ms'], 2)
         }])
         
         if file_exists:
@@ -186,7 +181,7 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
                 # 过滤掉完全空的行和所有数据列都为空的行
                 existing_df = existing_df.dropna(how='all')
                 # 进一步过滤：如果数据列（mean_ms等）全为空，也删除
-                data_columns = ['mean_ms', 'p50_ms', 'p90_ms', 'p99_ms', 'p999_ms']
+                data_columns = ['mean_ms', 'p90_ms', 'p99_ms', 'p999_ms', 'p9999_ms']
                 existing_df = existing_df.dropna(subset=data_columns, how='all')
                 
                 if len(existing_df) > 0:
@@ -203,15 +198,38 @@ def analyze_rtt_data(file_path: str, output_base_dir: str = None):
         # 写入更新后的数据
         updated_df.to_csv(comparison_csv_path, index=False, encoding='utf-8')
 
-        # --- 6. Prepare Chart Data for Frontend ---
+        # --- 6. Prepare Chart Data for Frontend (with Downsampling) ---
         rtt = valid_sorted.to_numpy()
         n = len(rtt)
-        x = np.sort(rtt).tolist()
-        y = (np.arange(1, n + 1) / n).tolist()
+        x_full = np.sort(rtt)
+        y_full = np.arange(1, n + 1) / n
+        
+        # 计算 X 轴最大值（在后端完成，避免前端计算）
+        x_max = float(x_full[-1])  # 最大RTT值
+        
+        # 数据降采样：如果数据点超过3000个，进行降采样
+        max_points = 3000
+        if n <= max_points:
+            # 数据量较小，直接返回
+            x = x_full.tolist()
+            y = y_full.tolist()
+        else:
+            # 数据量大，进行降采样
+            step = n // max_points
+            indices = np.arange(0, n, step)
+            
+            # 确保包含第一个和最后一个点
+            if indices[-1] != n - 1:
+                indices = np.append(indices, n - 1)
+            
+            x = x_full[indices].tolist()
+            y = y_full[indices].tolist()
+            
+            print(f"Downsampled data from {n} points to {len(x)} points")
 
         return {
             "stats": stats,
-            "chart_data": {"x": x, "y": y},
+            "chart_data": {"x": x, "y": y, "x_max": x_max},  # 添加 x_max
             "output_dir": output_dir,
             "comparison_file": comparison_csv_path,
             "base_name": base_name,
@@ -284,7 +302,7 @@ async def get_comparisons_endpoint():
         df = df.dropna(how='all')
         
         # 过滤掉数据列全为空的行
-        data_columns = ['mean_ms', 'p50_ms', 'p90_ms', 'p99_ms', 'p999_ms']
+        data_columns = ['mean_ms', 'p90_ms', 'p99_ms', 'p999_ms', 'p9999_ms']
         if all(col in df.columns for col in data_columns):
             df = df.dropna(subset=data_columns, how='all')
         

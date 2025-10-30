@@ -30,7 +30,7 @@ def write_csv(path, values_sec):
 def main():
     parser = argparse.ArgumentParser(description="Generate RTT CSV for testing (column: RTT in seconds).")
     parser.add_argument("-o", "--out", default="sample_rtt.csv", help="Output CSV path")
-    parser.add_argument("-n", "--num", type=int, default=10000, help="Number of RTT samples")
+    parser.add_argument("-n", "--num", type=int, default=1000000, help="Number of RTT samples")
     parser.add_argument("--median-ms", type=float, default=30.0, help="Median RTT in milliseconds")
     parser.add_argument("--sigma", type=float, default=0.5, help="Lognormal sigma")
     parser.add_argument("--outlier-rate", type=float, default=0.005, help="Outlier ratio (0~1)")
