@@ -998,6 +998,8 @@ function App() {
 
     return {
       backgroundColor: 'transparent',
+      // 禁用动画以提高性能，避免保存图片时线条未绘制完成
+      animation: false,
       textStyle: theme === 'blackgold' ? { color: gold } : undefined,
       tooltip: {
         trigger: 'axis',
@@ -1371,6 +1373,8 @@ function App() {
 
     return {
       backgroundColor: 'transparent',
+      // 禁用动画以提高性能
+      animation: false,
       textStyle: theme === 'blackgold' ? { color: gold } : undefined,
       tooltip: {
         trigger: 'axis',
